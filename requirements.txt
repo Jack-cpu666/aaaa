@@ -1,0 +1,9 @@
+Flask>=2.0
+waitress>=2.0
+numpy>=1.20
+# mss and pynput are for the example engine, not directly used by the web server itself
+# but good to list if the user intends to run the example.
+# For a pure web service deployment, they might not be strictly needed in *this* venv.
+# However, as the prompt implies the example code is part of the project, I'll include them.
+mss>=6.0
+pynput>=1.7
