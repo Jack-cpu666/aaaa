@@ -1,10 +1,14 @@
-from flask import Flask, render_template_string, jsonify, request
+from flask import Flask, render_template_string, jsonify, request, send_file, Response
 import json
 import base64
 import qrcode
 import io
-import base64
+import zipfile
+import hashlib
+import time
 from datetime import datetime
+import os
+import tempfile
 
 app = Flask(__name__)
 
@@ -35,7 +39,7 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NFC Tag Emulator - NTAG213</title>
+    <title>NFC Digital Wallet Card</title>
     <style>
         * {
             margin: 0;
@@ -45,376 +49,436 @@ HTML_TEMPLATE = """
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
             min-height: 100vh;
             padding: 20px;
         }
 
         .container {
-            max-width: 500px;
+            max-width: 400px;
             margin: 0 auto;
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        }
+
+        .card-preview {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            color: white;
+            position: relative;
             overflow: hidden;
         }
 
-        .header {
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-            color: white;
-            padding: 30px 20px;
-            text-align: center;
+        .card-preview::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -50%;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            transform: rotate(45deg);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
         }
 
         .nfc-icon {
-            width: 60px;
-            height: 60px;
+            font-size: 24px;
             background: rgba(255, 255, 255, 0.2);
-            border-radius: 50%;
+            padding: 8px;
+            border-radius: 8px;
+        }
+
+        .card-content {
+            position: relative;
+            z-index: 2;
+        }
+
+        .main-text {
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .card-details {
+            font-size: 12px;
+            opacity: 0.8;
+            margin-top: 15px;
+        }
+
+        .card-serial {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 10px;
+            margin-top: 10px;
+        }
+
+        .controls {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .add-to-wallet {
+            background: #000;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 15px 25px;
+            width: 100%;
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            margin: 0 auto 15px;
-            font-size: 30px;
-        }
-
-        .status {
-            padding: 20px;
-            text-align: center;
-        }
-
-        .status-indicator {
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            display: inline-block;
-            margin-right: 10px;
-            animation: pulse 2s infinite;
-        }
-
-        .status-active {
-            background: #4CAF50;
-        }
-
-        .status-inactive {
-            background: #f44336;
-        }
-
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
-        }
-
-        .tag-details {
-            padding: 0 20px;
-        }
-
-        .detail-group {
-            margin-bottom: 20px;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 10px;
-            border-left: 4px solid #2a5298;
-        }
-
-        .detail-label {
-            font-weight: 600;
-            color: #555;
-            font-size: 14px;
-            margin-bottom: 5px;
-        }
-
-        .detail-value {
-            font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-            color: #2a5298;
-            font-size: 16px;
-        }
-
-        .payload-hex {
-            word-break: break-all;
-            line-height: 1.4;
-        }
-
-        .qr-section {
-            padding: 20px;
-            text-align: center;
-            background: #f8f9fa;
-        }
-
-        .qr-code {
-            margin: 20px auto;
-            padding: 15px;
-            background: white;
-            border-radius: 10px;
-            display: inline-block;
-        }
-
-        .qr-code img {
-            border-radius: 5px;
-        }
-
-        .actions {
-            padding: 20px;
-            display: flex;
             gap: 10px;
-            flex-wrap: wrap;
-        }
-
-        .btn {
-            flex: 1;
-            min-width: 120px;
-            padding: 12px 20px;
-            border: none;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
             transition: all 0.3s ease;
         }
 
-        .btn-primary {
-            background: #2a5298;
-            color: white;
+        .add-to-wallet:hover {
+            background: #333;
+            transform: translateY(-2px);
         }
 
-        .btn-primary:hover {
-            background: #1e3c72;
-            transform: translateY(-2px);
+        .add-to-wallet:active {
+            transform: translateY(0);
+        }
+
+        .wallet-icon {
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 3px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: black;
+            font-size: 12px;
+        }
+
+        .alternative-methods {
+            margin-top: 20px;
+        }
+
+        .method {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-left: 4px solid #2a5298;
+        }
+
+        .method-title {
+            font-weight: 600;
+            color: #2a5298;
+            margin-bottom: 5px;
+        }
+
+        .method-desc {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .qr-code {
+            text-align: center;
+            margin: 15px 0;
+        }
+
+        .qr-code img {
+            border-radius: 8px;
+            background: white;
+            padding: 10px;
+        }
+
+        .status {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 20px;
+            color: #155724;
+            text-align: center;
+        }
+
+        .instructions {
+            background: #e3f2fd;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+            font-size: 14px;
+            color: #1565c0;
         }
 
         .btn-secondary {
             background: #e9ecef;
             color: #495057;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 15px;
+            margin: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
         }
 
         .btn-secondary:hover {
             background: #dee2e6;
         }
-
-        .web-nfc-section {
-            padding: 20px;
-            border-top: 1px solid #e9ecef;
-        }
-
-        .warning {
-            background: #fff3cd;
-            border: 1px solid #ffeaa7;
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 15px;
-            color: #856404;
-        }
-
-        .success-message {
-            background: #d4edda;
-            border: 1px solid #c3e6cb;
-            border-radius: 8px;
-            padding: 15px;
-            margin: 15px 0;
-            color: #155724;
-            display: none;
-        }
-
-        .error-message {
-            background: #f8d7da;
-            border: 1px solid #f5c6cb;
-            border-radius: 8px;
-            padding: 15px;
-            margin: 15px 0;
-            color: #721c24;
-            display: none;
-        }
-
-        .api-section {
-            padding: 20px;
-            border-top: 1px solid #e9ecef;
-            background: #f8f9fa;
-        }
-
-        .api-endpoint {
-            background: #343a40;
-            color: #f8f9fa;
-            padding: 10px 15px;
-            border-radius: 5px;
-            font-family: monospace;
-            margin: 10px 0;
-        }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <div class="nfc-icon">📡</div>
-            <h1>NFC Tag Emulator</h1>
-            <p>{{ nfc_data.tagType }} - {{ nfc_data.iso }}</p>
-        </div>
-
-        <div class="status">
-            <div class="status-indicator status-active"></div>
-            <span>Emulation Active</span>
-        </div>
-
-        <div class="tag-details">
-            <div class="detail-group">
-                <div class="detail-label">Tag Type</div>
-                <div class="detail-value">{{ nfc_data.tagType }} ({{ nfc_data.manufacturer }})</div>
+        <!-- Card Preview -->
+        <div class="card-preview">
+            <div class="card-header">
+                <div class="card-title">NFC Digital Card</div>
+                <div class="nfc-icon">📡</div>
             </div>
-
-            <div class="detail-group">
-                <div class="detail-label">Serial Number</div>
-                <div class="detail-value">{{ nfc_data.serialNumber }}</div>
-            </div>
-
-            <div class="detail-group">
-                <div class="detail-label">Text Content</div>
-                <div class="detail-value">{{ nfc_data.text }}</div>
-            </div>
-
-            <div class="detail-group">
-                <div class="detail-label">NDEF Record Type</div>
-                <div class="detail-value">{{ nfc_data.recordType }}</div>
-            </div>
-
-            <div class="detail-group">
-                <div class="detail-label">Raw Payload (Hex)</div>
-                <div class="detail-value payload-hex">{{ nfc_data.payload_hex }}</div>
-            </div>
-
-            <div class="detail-group">
-                <div class="detail-label">Memory Size</div>
-                <div class="detail-value">{{ nfc_data.memorySize }} bytes ({{ nfc_data.pages }} pages × {{ nfc_data.pageSize }} bytes)</div>
-            </div>
-
-            <div class="detail-group">
-                <div class="detail-label">ATQA / SAK</div>
-                <div class="detail-value">{{ nfc_data.atqa }} / {{ nfc_data.sak }}</div>
+            <div class="card-content">
+                <div class="main-text">{{ nfc_data.text }}</div>
+                <div class="card-details">
+                    {{ nfc_data.tagType }} • {{ nfc_data.manufacturer }}<br>
+                    {{ nfc_data.iso }}
+                </div>
+                <div class="card-serial">{{ nfc_data.serialNumber }}</div>
             </div>
         </div>
 
-        <div class="qr-section">
-            <h3>QR Code Alternative</h3>
-            <p>Scan this QR code to get the same data</p>
-            <div class="qr-code">
-                <img src="/qr" alt="QR Code" />
-            </div>
-        </div>
-
-        <div class="web-nfc-section">
-            <h3>Web NFC (Experimental)</h3>
-            <div class="warning">
-                ⚠️ Web NFC is only supported on some Android browsers and cannot emulate tags on iOS
-            </div>
-            
-            <div class="success-message" id="success-msg">
-                ✅ NFC operation successful!
-            </div>
-            
-            <div class="error-message" id="error-msg">
-                ❌ <span id="error-text"></span>
+        <!-- Controls -->
+        <div class="controls">
+            <div class="status">
+                ✅ NFC Card Ready for Apple Wallet
             </div>
 
-            <div class="actions">
-                <button class="btn btn-primary" onclick="tryWebNFC()">Try Web NFC Write</button>
-                <button class="btn btn-secondary" onclick="copyData()">Copy Data</button>
-                <button class="btn btn-secondary" onclick="downloadData()">Download JSON</button>
-            </div>
-        </div>
+            <button class="add-to-wallet" onclick="addToWallet()">
+                <div class="wallet-icon">💳</div>
+                Add to Apple Wallet
+            </button>
 
-        <div class="api-section">
-            <h3>API Endpoints</h3>
-            <p>Access NFC data programmatically:</p>
-            <div class="api-endpoint">GET /api/nfc - Get full NFC data</div>
-            <div class="api-endpoint">GET /api/text - Get text content only</div>
-            <div class="api-endpoint">GET /api/payload - Get raw payload</div>
+            <div class="alternative-methods">
+                <h3>Alternative Methods</h3>
+                
+                <div class="method">
+                    <div class="method-title">QR Code Backup</div>
+                    <div class="method-desc">Scan this QR code to get the NFC data</div>
+                    <div class="qr-code">
+                        <img src="/qr" alt="QR Code" width="120" height="120" />
+                    </div>
+                </div>
+
+                <div class="method">
+                    <div class="method-title">Manual Copy</div>
+                    <div class="method-desc">Copy the data to clipboard</div>
+                    <button class="btn-secondary" onclick="copyData()">Copy NFC Data</button>
+                    <button class="btn-secondary" onclick="downloadJSON()">Download JSON</button>
+                </div>
+            </div>
+
+            <div class="instructions">
+                <strong>How to use:</strong><br>
+                1. Click "Add to Apple Wallet" to download the card<br>
+                2. Open the downloaded .pkpass file on your iPhone<br>
+                3. Add it to your Wallet app<br>
+                4. Use the card to share your NFC data
+            </div>
         </div>
     </div>
 
     <script>
-        // Get NFC data from server
         const nfcData = {{ nfc_data_json | safe }};
 
-        // Try Web NFC API (experimental)
-        async function tryWebNFC() {
-            const successMsg = document.getElementById('success-msg');
-            const errorMsg = document.getElementById('error-msg');
-            const errorText = document.getElementById('error-text');
-
-            successMsg.style.display = 'none';
-            errorMsg.style.display = 'none';
-
-            if (!('NDEFReader' in window)) {
-                errorText.textContent = 'Web NFC is not supported in this browser';
-                errorMsg.style.display = 'block';
-                return;
-            }
-
-            try {
-                const ndef = new NDEFReader();
-                
-                // Create NDEF message with text record
-                const message = {
-                    records: [{
-                        recordType: "text",
-                        lang: nfcData.language,
-                        data: nfcData.text
-                    }]
-                };
-
-                await ndef.write(message);
-                successMsg.style.display = 'block';
-                
-            } catch (error) {
-                errorText.textContent = error.message;
-                errorMsg.style.display = 'block';
-            }
+        function addToWallet() {
+            // Download the Apple Wallet pass
+            window.location.href = '/wallet/download';
         }
 
-        // Copy data to clipboard
         function copyData() {
-            const dataString = `NFC Tag Data:
-Tag Type: ${nfcData.tagType}
-Serial: ${nfcData.serialNumber}
+            const dataString = `NFC Digital Card
 Text: ${nfcData.text}
-Raw Payload: ${nfcData.payload_hex}
-ATQA: ${nfcData.atqa}
-SAK: ${nfcData.sak}`;
+Type: ${nfcData.tagType}
+Serial: ${nfcData.serialNumber}
+Payload: ${nfcData.payload_hex}`;
 
             navigator.clipboard.writeText(dataString).then(() => {
                 alert('NFC data copied to clipboard!');
             });
         }
 
-        // Download data as JSON
-        function downloadData() {
+        function downloadJSON() {
             const dataStr = JSON.stringify(nfcData, null, 2);
             const dataBlob = new Blob([dataStr], {type: 'application/json'});
             const url = URL.createObjectURL(dataBlob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = 'nfc_tag_data.json';
+            link.download = 'nfc_card_data.json';
             link.click();
             URL.revokeObjectURL(url);
         }
-
-        // Simulate NFC scanning animation
-        setInterval(() => {
-            const indicator = document.querySelector('.status-indicator');
-            indicator.style.transform = 'scale(1.2)';
-            setTimeout(() => {
-                indicator.style.transform = 'scale(1)';
-            }, 200);
-        }, 3000);
     </script>
 </body>
 </html>
 """
 
+def create_apple_wallet_pass():
+    """Create an Apple Wallet pass (.pkpass file) with NFC data"""
+    
+    # Pass.json structure for Apple Wallet
+    pass_json = {
+        "formatVersion": 1,
+        "passTypeIdentifier": "pass.com.nfc.digitalcard",
+        "serialNumber": NFC_DATA['serialNumber'].replace(':', ''),
+        "teamIdentifier": "DEMO123456",  # Demo team ID
+        "organizationName": "NFC Digital Cards",
+        "description": "NFC Digital Card",
+        "logoText": "NFC Card",
+        "foregroundColor": "rgb(255, 255, 255)",
+        "backgroundColor": "rgb(42, 82, 152)",
+        "labelColor": "rgb(255, 255, 255)",
+        "generic": {
+            "primaryFields": [
+                {
+                    "key": "nfc-data",
+                    "label": "NFC Data",
+                    "value": NFC_DATA['text']
+                }
+            ],
+            "secondaryFields": [
+                {
+                    "key": "tag-type",
+                    "label": "Tag Type",
+                    "value": NFC_DATA['tagType']
+                },
+                {
+                    "key": "manufacturer",
+                    "label": "Manufacturer",
+                    "value": NFC_DATA['manufacturer']
+                }
+            ],
+            "auxiliaryFields": [
+                {
+                    "key": "serial",
+                    "label": "Serial Number",
+                    "value": NFC_DATA['serialNumber']
+                }
+            ],
+            "backFields": [
+                {
+                    "key": "payload",
+                    "label": "Raw Payload (Hex)",
+                    "value": NFC_DATA['payload_hex']
+                },
+                {
+                    "key": "memory",
+                    "label": "Memory",
+                    "value": f"{NFC_DATA['memorySize']} bytes"
+                },
+                {
+                    "key": "iso",
+                    "label": "ISO Standard",
+                    "value": NFC_DATA['iso']
+                },
+                {
+                    "key": "atqa-sak",
+                    "label": "ATQA/SAK",
+                    "value": f"{NFC_DATA['atqa']} / {NFC_DATA['sak']}"
+                }
+            ]
+        },
+        "barcode": {
+            "message": NFC_DATA['text'],
+            "format": "PKBarcodeFormatQR",
+            "messageEncoding": "iso-8859-1"
+        },
+        "nfc": {
+            "message": NFC_DATA['text'],
+            "encryptionPublicKey": ""  # Would need real encryption key for production
+        }
+    }
+    
+    # Create manifest (checksums of all files)
+    manifest = {
+        "pass.json": hashlib.sha1(json.dumps(pass_json).encode()).hexdigest()
+    }
+    
+    # Create temporary directory for pass files
+    temp_dir = tempfile.mkdtemp()
+    
+    try:
+        # Write pass.json
+        pass_path = os.path.join(temp_dir, 'pass.json')
+        with open(pass_path, 'w') as f:
+            json.dump(pass_json, f, indent=2)
+        
+        # Write manifest.json
+        manifest_path = os.path.join(temp_dir, 'manifest.json')
+        with open(manifest_path, 'w') as f:
+            json.dump(manifest, f, indent=2)
+        
+        # Create signature (simplified for demo - real implementation needs certificates)
+        signature_path = os.path.join(temp_dir, 'signature')
+        with open(signature_path, 'w') as f:
+            f.write("DEMO_SIGNATURE_" + str(int(time.time())))
+        
+        # Create .pkpass file (ZIP archive)
+        pkpass_buffer = io.BytesIO()
+        with zipfile.ZipFile(pkpass_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+            zf.write(pass_path, 'pass.json')
+            zf.write(manifest_path, 'manifest.json')
+            zf.write(signature_path, 'signature')
+        
+        pkpass_buffer.seek(0)
+        return pkpass_buffer.getvalue()
+        
+    finally:
+        # Cleanup temp files
+        for file in [pass_path, manifest_path, signature_path]:
+            if os.path.exists(file):
+                os.remove(file)
+        os.rmdir(temp_dir)
+
 @app.route('/')
 def index():
-    """Main page with NFC emulator"""
+    """Main page with wallet card preview"""
     return render_template_string(HTML_TEMPLATE, 
                                 nfc_data=NFC_DATA, 
                                 nfc_data_json=json.dumps(NFC_DATA))
+
+@app.route('/wallet/download')
+def download_wallet_pass():
+    """Download Apple Wallet pass file"""
+    try:
+        pkpass_data = create_apple_wallet_pass()
+        
+        response = Response(
+            pkpass_data,
+            mimetype='application/vnd.apple.pkpass',
+            headers={
+                'Content-Disposition': 'attachment; filename="nfc-card.pkpass"',
+                'Content-Type': 'application/vnd.apple.pkpass'
+            }
+        )
+        return response
+        
+    except Exception as e:
+        return jsonify({
+            'error': 'Failed to create wallet pass',
+            'message': str(e),
+            'note': 'Demo pass creation - requires Apple Developer certificates for production'
+        }), 500
 
 @app.route('/qr')
 def generate_qr():
@@ -422,20 +486,18 @@ def generate_qr():
     qr = qrcode.QRCode(
         version=1,
         error_correction=qrcode.constants.ERROR_CORRECT_L,
-        box_size=10,
+        box_size=8,
         border=4,
     )
     qr.add_data(NFC_DATA['text'])
     qr.make(fit=True)
     
-    img = qr.make_image(fill_color="black", back_color="white")
+    img = qr.make_image(fill_color="#2a5298", back_color="white")
     
-    # Convert to bytes
     img_buffer = io.BytesIO()
     img.save(img_buffer, format='PNG')
     img_buffer.seek(0)
     
-    from flask import Response
     return Response(img_buffer.getvalue(), mimetype='image/png')
 
 @app.route('/api/nfc')
@@ -446,64 +508,33 @@ def api_nfc_data():
     response['status'] = 'active'
     return jsonify(response)
 
-@app.route('/api/text')
-def api_text_only():
-    """API endpoint to get text content only"""
-    return jsonify({
-        'text': NFC_DATA['text'],
-        'language': NFC_DATA['language'],
-        'encoding': NFC_DATA['encoding'],
-        'timestamp': datetime.now().isoformat()
-    })
-
-@app.route('/api/payload')
-def api_payload():
-    """API endpoint to get raw payload data"""
-    return jsonify({
-        'payload_hex': NFC_DATA['payload_hex'],
-        'payload_bytes': NFC_DATA['payload_bytes'],
-        'payload_base64': base64.b64encode(bytes(NFC_DATA['payload_bytes'])).decode('utf-8'),
-        'timestamp': datetime.now().isoformat()
-    })
-
-@app.route('/api/emulate', methods=['POST'])
-def api_emulate():
-    """API endpoint to simulate NFC tag emulation"""
-    data = request.get_json()
-    
-    # Log the emulation request
-    emulation_log = {
-        'timestamp': datetime.now().isoformat(),
-        'client_ip': request.remote_addr,
-        'user_agent': request.headers.get('User-Agent'),
-        'requested_data': data,
-        'emulated_tag': NFC_DATA['tagType'],
-        'emulated_text': NFC_DATA['text']
-    }
+@app.route('/api/wallet/verify')
+def verify_wallet_support():
+    """Check if device supports Apple Wallet"""
+    user_agent = request.headers.get('User-Agent', '')
+    is_ios = 'iPhone' in user_agent or 'iPad' in user_agent
+    is_safari = 'Safari' in user_agent
     
     return jsonify({
-        'status': 'success',
-        'message': 'NFC tag emulation simulated',
-        'emulated_data': NFC_DATA,
-        'log': emulation_log
+        'supports_wallet': is_ios,
+        'is_ios_device': is_ios,
+        'is_safari': is_safari,
+        'user_agent': user_agent,
+        'recommendation': 'Use Safari on iOS for best Wallet experience' if is_ios else 'Apple Wallet not available on this device'
     })
 
 @app.route('/health')
 def health_check():
-    """Health check endpoint for deployment"""
+    """Health check endpoint"""
     return jsonify({
         'status': 'healthy',
-        'service': 'NFC Tag Emulator',
-        'version': '1.0.0',
+        'service': 'NFC Digital Wallet Card',
+        'version': '2.0.0',
         'timestamp': datetime.now().isoformat()
     })
 
 if __name__ == '__main__':
-    # For local development
-    app.run(debug=True, host='0.0.0.0', port=5000)
-    
-# For deployment on Render.com, also include:
-# if __name__ == '__main__':
-#     import os
-#     port = int(os.environ.get('PORT', 5000))
-#     app.run(host='0.0.0.0', port=port)
+    import os
+    port = int(os.environ.get('PORT', 5000))
+    debug_mode = os.environ.get('FLASK_ENV') == 'development'
+    app.run(host='0.0.0.0', port=port, debug=debug_mode)
