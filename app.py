@@ -12,38 +12,39 @@ import tempfile
 
 app = Flask(__name__)
 
-# Updated NFC tag data from your latest screenshots
-NFC_DATA = {
-    "tagType": "NTAG213",
-    "manufacturer": "NXP", 
-    "iso": "ISO 14443-3A",
-    "serialNumber": "04:D6:1B:3A:F3:1C:90",
-    "uid": "04D61B3AF31C90",
-    "atqa": "0x0044",
-    "sak": "0x00",
-    "text": "10151838",
-    "language": "en",
-    "encoding": "UTF-8",
-    "payload_hex": "02 65 6E 31 30 31 35 31 38 33 38",
-    "payload_bytes": [0x02, 0x65, 0x6E, 0x31, 0x30, 0x31, 0x35, 0x31, 0x38, 0x33, 0x38],
-    "raw_value": "en10151838",
-    "memorySize": 180,
-    "pages": 45,
-    "pageSize": 4,
-    "recordType": "Text record: T (0x54)",
-    "format": "NFC Well Known (0x01)",
-    "rfc": "Defined by RFC 2141, RFC 3986",
-    "ndefFormat": "NFC Forum Type 2",
-    "writable": False,
-    "passwordProtected": False
-}
-
-# NDEF record structure for proper emulation
-NDEF_RECORD = {
-    "tnf": 1,  # TNF_WELL_KNOWN
-    "type": "T",  # Text record
-    "id": "",
-    "payload": NFC_DATA["payload_bytes"]
+# Sample saved tags (your original tag plus some examples)
+SAVED_TAGS = {
+    "tag_1": {
+        "id": "tag_1",
+        "name": "Original NTAG213",
+        "tagType": "NTAG213",
+        "manufacturer": "NXP", 
+        "iso": "ISO 14443-3A",
+        "serialNumber": "04:D6:1B:3A:F3:1C:90",
+        "uid": "04D61B3AF31C90",
+        "atqa": "0x0044",
+        "sak": "0x00",
+        "text": "10151838",
+        "language": "en",
+        "encoding": "UTF-8",
+        "payload_hex": "02 65 6E 31 30 31 35 31 38 33 38",
+        "payload_bytes": [0x02, 0x65, 0x6E, 0x31, 0x30, 0x31, 0x35, 0x31, 0x38, 0x33, 0x38],
+        "raw_value": "en10151838",
+        "memorySize": 180,
+        "pages": 45,
+        "pageSize": 4,
+        "recordType": "Text record: T (0x54)",
+        "format": "NFC Well Known (0x01)",
+        "ndefFormat": "NFC Forum Type 2",
+        "writable": False,
+        "passwordProtected": False,
+        "scannedAt": "2025-05-31T14:32:00Z",
+        "complete_memory": "04D61B3AF31C9040400000FE0000000002656E313031353138333800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+        "technology": ["NfcA", "Ndef", "NdefFormatable"],
+        "maxSize": 180,
+        "isWritable": True,
+        "canMakeReadOnly": True
+    }
 }
 
 HTML_TEMPLATE = """
@@ -52,7 +53,7 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Android NFC Tag Emulator</title>
+    <title>NFC Tag Reader & Emulator</title>
     <meta name="theme-color" content="#2a5298">
     <link rel="manifest" href="/manifest.json">
     <style>
@@ -71,7 +72,7 @@ HTML_TEMPLATE = """
         }
 
         .container {
-            max-width: 450px;
+            max-width: 500px;
             margin: 0 auto;
         }
 
@@ -104,7 +105,7 @@ HTML_TEMPLATE = """
             font-size: 16px;
         }
 
-        .emulator-card {
+        .main-controls {
             background: rgba(255, 255, 255, 0.95);
             border-radius: 20px;
             padding: 25px;
@@ -113,85 +114,67 @@ HTML_TEMPLATE = """
             color: #333;
         }
 
-        .status-section {
-            text-align: center;
-            margin-bottom: 25px;
-        }
-
-        .status-indicator {
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            display: inline-block;
-            margin-right: 10px;
-            animation: pulse 2s infinite;
-        }
-
-        .status-active {
-            background: #4CAF50;
-        }
-
-        .status-inactive {
-            background: #f44336;
-        }
-
-        @keyframes pulse {
-            0% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.7; transform: scale(1.1); }
-            100% { opacity: 1; transform: scale(1); }
-        }
-
-        .nfc-data-display {
+        .control-tabs {
+            display: flex;
             background: #f8f9fa;
-            border-radius: 15px;
-            padding: 20px;
+            border-radius: 12px;
+            padding: 4px;
             margin-bottom: 25px;
-            border-left: 5px solid #2a5298;
         }
 
-        .main-value {
-            font-size: 32px;
-            font-weight: 700;
-            color: #2a5298;
-            text-align: center;
-            margin-bottom: 15px;
-            letter-spacing: 2px;
-        }
-
-        .detail-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin-bottom: 20px;
-        }
-
-        .detail-item {
-            background: #fff;
+        .tab {
+            flex: 1;
             padding: 12px;
+            text-align: center;
             border-radius: 8px;
-            border: 1px solid #e9ecef;
-        }
-
-        .detail-label {
-            font-size: 12px;
-            color: #666;
+            cursor: pointer;
+            transition: all 0.3s ease;
             font-weight: 600;
-            margin-bottom: 5px;
         }
 
-        .detail-value {
-            font-family: 'SF Mono', Monaco, monospace;
-            font-size: 14px;
-            color: #2a5298;
-            word-break: break-all;
+        .tab.active {
+            background: #2a5298;
+            color: white;
         }
 
-        .emulation-controls {
-            display: grid;
-            gap: 15px;
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .scan-section {
+            text-align: center;
+        }
+
+        .scan-animation {
+            width: 150px;
+            height: 150px;
+            border: 4px solid #e9ecef;
+            border-top: 4px solid #2a5298;
+            border-radius: 50%;
+            margin: 20px auto;
+            animation: spin 2s linear infinite;
+            display: none;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .status-display {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+            text-align: center;
         }
 
         .btn {
+            width: 100%;
             padding: 15px 20px;
             border: none;
             border-radius: 12px;
@@ -203,16 +186,12 @@ HTML_TEMPLATE = """
             align-items: center;
             justify-content: center;
             gap: 10px;
+            margin: 10px 0;
         }
 
         .btn-primary {
             background: #2a5298;
             color: white;
-        }
-
-        .btn-primary:hover {
-            background: #1e3c72;
-            transform: translateY(-2px);
         }
 
         .btn-success {
@@ -225,15 +204,110 @@ HTML_TEMPLATE = """
             color: #212529;
         }
 
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
         .btn-secondary {
             background: #6c757d;
             color: white;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            opacity: 0.9;
         }
 
         .btn:disabled {
             opacity: 0.6;
             cursor: not-allowed;
             transform: none !important;
+        }
+
+        .saved-tags {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .tag-item {
+            background: #fff;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 15px;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .tag-item:hover {
+            border-color: #2a5298;
+            box-shadow: 0 5px 15px rgba(42, 82, 152, 0.2);
+        }
+
+        .tag-item.selected {
+            border-color: #2a5298;
+            background: #f0f7ff;
+        }
+
+        .tag-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .tag-name {
+            font-weight: 600;
+            font-size: 16px;
+            color: #2a5298;
+        }
+
+        .tag-type {
+            background: #e9ecef;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            color: #495057;
+        }
+
+        .tag-details {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .tag-preview {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        .emulation-panel {
+            background: #e8f5e8;
+            border: 2px solid #28a745;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .emulation-panel.active {
+            display: block;
+        }
+
+        .emulation-info {
+            text-align: center;
+            margin-bottom: 15px;
+        }
+
+        .selected-tag-display {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
         }
 
         .message {
@@ -267,115 +341,125 @@ HTML_TEMPLATE = """
             color: #1565c0;
         }
 
-        .advanced-section {
-            margin-top: 20px;
-        }
-
-        .payload-display {
+        .raw-data-display {
             background: #343a40;
             color: #f8f9fa;
             padding: 15px;
             border-radius: 8px;
             font-family: monospace;
-            font-size: 14px;
+            font-size: 12px;
             line-height: 1.4;
-            overflow-x: auto;
+            max-height: 200px;
+            overflow-y: auto;
+            word-break: break-all;
         }
 
-        .install-prompt {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #e9ecef;
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: #2a5298;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .feature-badge {
+            display: inline-block;
+            background: #2a5298;
             color: white;
-            padding: 20px;
-            border-radius: 15px;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-
-        .feature-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-top: 20px;
-        }
-
-        .feature-card {
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border-radius: 10px;
-            padding: 15px;
-            text-align: center;
-        }
-
-        .qr-section {
-            text-align: center;
-            padding: 20px;
-            background: #f8f9fa;
-            border-radius: 15px;
-            margin-top: 20px;
-        }
-
-        .qr-code img {
-            border-radius: 10px;
-            background: white;
-            padding: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            margin: 2px;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <div class="nfc-logo">📡</div>
-            <div class="title">NFC Tag Emulator</div>
-            <div class="subtitle">Android Full Emulation</div>
+            <div class="nfc-logo">🔍</div>
+            <div class="title">NFC Tag Scanner</div>
+            <div class="subtitle">Read, Save & Emulate Any Tag</div>
         </div>
 
-        <div class="install-prompt" id="installPrompt" style="display: none;">
-            <h3>📱 Install as App</h3>
-            <p>Add this to your home screen for better NFC emulation</p>
-            <button class="btn btn-warning" onclick="installPWA()">Install App</button>
-        </div>
-
-        <div class="emulator-card">
-            <div class="status-section">
-                <div class="status-indicator" id="statusIndicator"></div>
-                <span id="statusText">Checking NFC support...</span>
+        <div class="main-controls">
+            <div class="control-tabs">
+                <div class="tab active" onclick="switchTab('scan')">📡 Scan Tags</div>
+                <div class="tab" onclick="switchTab('library')">📚 Tag Library</div>
+                <div class="tab" onclick="switchTab('emulate')">🚀 Emulate</div>
             </div>
 
-            <div class="nfc-data-display">
-                <div class="main-value">{{ nfc_data.text }}</div>
-                <div class="detail-grid">
-                    <div class="detail-item">
-                        <div class="detail-label">Tag Type</div>
-                        <div class="detail-value">{{ nfc_data.tagType }}</div>
+            <!-- Scan Tab -->
+            <div class="tab-content active" id="scan-content">
+                <div class="scan-section">
+                    <div class="status-display" id="scan-status">
+                        Ready to scan NFC tags
                     </div>
-                    <div class="detail-item">
-                        <div class="detail-label">Serial Number</div>
-                        <div class="detail-value">{{ nfc_data.serialNumber }}</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="detail-label">UID</div>
-                        <div class="detail-value">{{ nfc_data.uid }}</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="detail-label">ATQA/SAK</div>
-                        <div class="detail-value">{{ nfc_data.atqa }}/{{ nfc_data.sak }}</div>
+                    
+                    <div class="scan-animation" id="scan-animation"></div>
+                    
+                    <button class="btn btn-primary" id="start-scan" onclick="startScanning()">
+                        🔍 Start Scanning
+                    </button>
+                    
+                    <button class="btn btn-danger" id="stop-scan" onclick="stopScanning()" style="display: none;">
+                        ⏹️ Stop Scanning
+                    </button>
+                    
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="scan-progress"></div>
                     </div>
                 </div>
             </div>
 
-            <div class="emulation-controls">
-                <button class="btn btn-primary" id="startEmulation" onclick="startNFCEmulation()">
-                    🚀 Start NFC Emulation
+            <!-- Library Tab -->
+            <div class="tab-content" id="library-content">
+                <div class="saved-tags" id="saved-tags">
+                    <!-- Tags will be loaded here -->
+                </div>
+                <button class="btn btn-secondary" onclick="exportAllTags()">
+                    💾 Export All Tags
                 </button>
-                <button class="btn btn-success" id="writeToTag" onclick="writeNFCTag()" style="display: none;">
-                    ✍️ Write to NFC Tag
+                <button class="btn btn-warning" onclick="clearAllTags()">
+                    🗑️ Clear Library
                 </button>
-                <button class="btn btn-warning" onclick="downloadAPK()">
-                    📱 Download Native Android App
-                </button>
-                <button class="btn btn-secondary" onclick="copyData()">
-                    📋 Copy Tag Data
-                </button>
+            </div>
+
+            <!-- Emulate Tab -->
+            <div class="tab-content" id="emulate-content">
+                <div id="no-tag-selected" style="text-align: center; color: #666;">
+                    Select a tag from the library to emulate
+                </div>
+                
+                <div class="emulation-panel" id="emulation-panel">
+                    <div class="emulation-info">
+                        <h3>🎯 Ready to Emulate</h3>
+                        <p>Selected tag will be emulated</p>
+                    </div>
+                    
+                    <div class="selected-tag-display" id="selected-tag-display">
+                        <!-- Selected tag info will appear here -->
+                    </div>
+                    
+                    <button class="btn btn-success" onclick="startEmulation()">
+                        🚀 Start Emulation
+                    </button>
+                    
+                    <button class="btn btn-warning" onclick="writeToTag()">
+                        ✍️ Write to Physical Tag
+                    </button>
+                    
+                    <button class="btn btn-secondary" onclick="shareTag()">
+                        📤 Share Tag Data
+                    </button>
+                </div>
             </div>
 
             <div class="message success" id="successMsg">
@@ -394,208 +478,422 @@ HTML_TEMPLATE = """
                 <strong>ℹ️ Info:</strong> <span id="infoText"></span>
             </div>
         </div>
-
-        <div class="emulator-card">
-            <h3>Advanced Options</h3>
-            <div class="advanced-section">
-                <h4>Raw NDEF Payload</h4>
-                <div class="payload-display">{{ nfc_data.payload_hex }}</div>
-                
-                <button class="btn btn-secondary" onclick="showTechnicalDetails()" style="margin-top: 15px;">
-                    🔧 Show Technical Details
-                </button>
-            </div>
-        </div>
-
-        <div class="qr-section">
-            <h3>QR Code Backup</h3>
-            <p>Scan this QR code to get the NFC data on any device</p>
-            <div class="qr-code">
-                <img src="/qr" alt="QR Code" width="150" height="150" />
-            </div>
-        </div>
-
-        <div class="feature-grid">
-            <div class="feature-card">
-                <h4>🎯 True Emulation</h4>
-                <p>Emulates actual NTAG213 tag</p>
-            </div>
-            <div class="feature-card">
-                <h4>📱 Native Support</h4>
-                <p>Uses Android HCE technology</p>
-            </div>
-            <div class="feature-card">
-                <h4>🔄 Real-time</h4>
-                <p>Live NFC tag simulation</p>
-            </div>
-        </div>
     </div>
 
     <script>
-        const nfcData = {{ nfc_data_json | safe }};
+        let savedTags = {{ saved_tags_json | safe }};
+        let selectedTag = null;
         let ndefReader = null;
-        let ndefWriter = null;
-        let isEmulating = false;
+        let isScanning = false;
+        let currentTab = 'scan';
 
-        // Check for PWA install prompt
-        let deferredPrompt;
-        window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
-            deferredPrompt = e;
-            document.getElementById('installPrompt').style.display = 'block';
-        });
-
-        function installPWA() {
-            if (deferredPrompt) {
-                deferredPrompt.prompt();
-                deferredPrompt.userChoice.then((choiceResult) => {
-                    if (choiceResult.outcome === 'accepted') {
-                        showSuccess('App installed successfully!');
-                    }
-                    deferredPrompt = null;
-                    document.getElementById('installPrompt').style.display = 'none';
-                });
+        function switchTab(tabName) {
+            // Update tab buttons
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelector(`.tab:nth-child(${tabName === 'scan' ? 1 : tabName === 'library' ? 2 : 3})`).classList.add('active');
+            
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(`${tabName}-content`).classList.add('active');
+            
+            currentTab = tabName;
+            
+            if (tabName === 'library') {
+                loadSavedTags();
+            } else if (tabName === 'emulate') {
+                updateEmulationPanel();
             }
         }
 
-        async function checkNFCSupport() {
-            const statusIndicator = document.getElementById('statusIndicator');
-            const statusText = document.getElementById('statusText');
-            
+        async function startScanning() {
             if (!('NDEFReader' in window)) {
-                statusIndicator.className = 'status-indicator status-inactive';
-                statusText.textContent = 'Web NFC not supported';
-                showWarning('Web NFC API not available. Install the native app for full emulation.');
-                return false;
+                showError('Web NFC not supported on this device/browser');
+                return;
             }
 
             try {
-                const permissions = await navigator.permissions.query({name: 'nfc'});
-                if (permissions.state === 'granted') {
-                    statusIndicator.className = 'status-indicator status-active';
-                    statusText.textContent = 'NFC Ready for Emulation';
-                    return true;
-                } else {
-                    statusIndicator.className = 'status-indicator status-inactive';
-                    statusText.textContent = 'NFC Permission Required';
-                    showInfo('Click "Start NFC Emulation" to request NFC permissions.');
-                    return false;
-                }
-            } catch (error) {
-                statusIndicator.className = 'status-indicator status-inactive';
-                statusText.textContent = 'NFC Check Failed';
-                showError('Could not check NFC permissions: ' + error.message);
-                return false;
-            }
-        }
+                document.getElementById('start-scan').style.display = 'none';
+                document.getElementById('stop-scan').style.display = 'block';
+                document.getElementById('scan-animation').style.display = 'block';
+                document.getElementById('scan-status').textContent = 'Scanning for NFC tags...';
+                updateProgress(10);
 
-        async function startNFCEmulation() {
-            const startBtn = document.getElementById('startEmulation');
-            const writeBtn = document.getElementById('writeToTag');
-            
-            try {
-                startBtn.disabled = true;
-                startBtn.textContent = '🔄 Starting Emulation...';
-
-                // Initialize NDEF Reader for emulation
                 ndefReader = new NDEFReader();
-                ndefWriter = new NDEFReader();
-
-                // Create NDEF message with your tag data
-                const ndefMessage = {
-                    records: [{
-                        recordType: "text",
-                        lang: nfcData.language,
-                        data: nfcData.text,
-                        encoding: "utf-8"
-                    }]
-                };
-
-                // Start scanning to demonstrate functionality
                 await ndefReader.scan();
-                
+                isScanning = true;
+
                 ndefReader.addEventListener("reading", event => {
-                    showInfo('NFC tag detected! Your emulated data is ready to write.');
-                    writeBtn.style.display = 'block';
+                    handleTagRead(event);
                 });
 
-                isEmulating = true;
-                startBtn.textContent = '✅ Emulation Active';
-                startBtn.className = 'btn btn-success';
-                
-                document.getElementById('statusIndicator').className = 'status-indicator status-active';
-                document.getElementById('statusText').textContent = 'Emulation Active - Ready to Write';
-                
-                showSuccess('NFC emulation started! Bring your phone near another NFC device.');
+                ndefReader.addEventListener("readingerror", error => {
+                    showError('Failed to read tag: ' + error.message);
+                    stopScanning();
+                });
+
+                updateProgress(100);
+                showSuccess('NFC scanning started! Hold a tag near your device.');
 
             } catch (error) {
-                startBtn.disabled = false;
-                startBtn.textContent = '🚀 Start NFC Emulation';
-                showError('Failed to start emulation: ' + error.message);
+                showError('Failed to start scanning: ' + error.message);
+                stopScanning();
             }
         }
 
-        async function writeNFCTag() {
-            try {
-                const ndefMessage = {
-                    records: [{
-                        recordType: "text",
-                        lang: nfcData.language,
-                        data: nfcData.text
-                    }]
-                };
-
-                await ndefWriter.write(ndefMessage);
-                showSuccess('Successfully wrote NFC data to tag!');
-                
-            } catch (error) {
-                showError('Failed to write NFC tag: ' + error.message);
-            }
+        function stopScanning() {
+            isScanning = false;
+            document.getElementById('start-scan').style.display = 'block';
+            document.getElementById('stop-scan').style.display = 'none';
+            document.getElementById('scan-animation').style.display = 'none';
+            document.getElementById('scan-status').textContent = 'Scanning stopped';
+            updateProgress(0);
         }
 
-        function downloadAPK() {
-            // This would link to a real Android APK for full HCE emulation
-            showInfo('Generating Android APK with full Host Card Emulation...');
+        function handleTagRead(event) {
+            console.log('NFC tag detected:', event);
+            updateProgress(50);
             
-            // For now, redirect to APK creation endpoint
-            window.location.href = '/android/apk-download';
+            // Extract complete tag data
+            const tagData = {
+                id: 'tag_' + Date.now(),
+                name: `Scanned Tag ${Object.keys(savedTags).length + 1}`,
+                serialNumber: event.serialNumber || 'Unknown',
+                uid: event.serialNumber || 'Unknown',
+                scannedAt: new Date().toISOString(),
+                // Extract all available data
+                records: [],
+                rawData: {},
+                technology: [],
+                memorySize: 0,
+                isWritable: false
+            };
+
+            // Process NDEF records
+            if (event.message && event.message.records) {
+                event.message.records.forEach(record => {
+                    const recordData = {
+                        recordType: record.recordType,
+                        mediaType: record.mediaType,
+                        id: record.id,
+                        data: null,
+                        encoding: record.encoding,
+                        lang: record.lang
+                    };
+
+                    // Extract data based on record type
+                    if (record.recordType === 'text') {
+                        recordData.data = record.data;
+                        tagData.text = record.data;
+                        tagData.language = record.lang || 'en';
+                    } else if (record.recordType === 'url') {
+                        recordData.data = record.data;
+                        tagData.url = record.data;
+                    } else if (record.recordType === 'mime') {
+                        recordData.data = Array.from(new Uint8Array(record.data));
+                        recordData.mediaType = record.mediaType;
+                    } else {
+                        // Raw data for unknown types
+                        recordData.data = Array.from(new Uint8Array(record.data));
+                    }
+
+                    tagData.records.push(recordData);
+                });
+            }
+
+            // Try to detect tag type from available info
+            tagData.tagType = detectTagType(event);
+            tagData.manufacturer = detectManufacturer(tagData.uid);
+            tagData.iso = 'ISO 14443-3A'; // Most common
+            
+            // Generate payload hex from first text record
+            if (tagData.text) {
+                const textBytes = new TextEncoder().encode(tagData.text);
+                const langBytes = new TextEncoder().encode(tagData.language || 'en');
+                const payload = [0x02, ...langBytes, ...textBytes];
+                tagData.payload_bytes = payload;
+                tagData.payload_hex = payload.map(b => b.toString(16).padStart(2, '0')).join(' ').toUpperCase();
+            }
+
+            // Save the tag
+            savedTags[tagData.id] = tagData;
+            saveTagsToStorage();
+            
+            updateProgress(100);
+            showSuccess(`Tag scanned and saved! Found ${tagData.records.length} record(s)`);
+            
+            // Auto-switch to library tab to show the new tag
+            setTimeout(() => {
+                switchTab('library');
+            }, 2000);
         }
 
-        function copyData() {
-            const dataString = `NFC Tag Data (Android Compatible)
-Text: ${nfcData.text}
-Type: ${nfcData.tagType}
-UID: ${nfcData.uid}
-Serial: ${nfcData.serialNumber}
-NDEF Payload: ${nfcData.payload_hex}
-Raw Value: ${nfcData.raw_value}
+        function detectTagType(event) {
+            // Try to determine tag type from available information
+            if (event.serialNumber) {
+                const uid = event.serialNumber;
+                if (uid.startsWith('04')) {
+                    return 'NTAG213/215/216'; // Most common for UID starting with 04
+                }
+            }
+            return 'Unknown NFC Tag';
+        }
 
-Android HCE Data:
-TNF: 1 (Well Known)
-Type: T (Text)
-Language: ${nfcData.language}
-Encoding: ${nfcData.encoding}`;
+        function detectManufacturer(uid) {
+            if (!uid) return 'Unknown';
+            
+            // First byte of UID often indicates manufacturer
+            const firstByte = uid.substring(0, 2).toUpperCase();
+            switch (firstByte) {
+                case '04': return 'NXP';
+                case '08': return 'Sony';
+                case '05': return 'Infineon';
+                default: return 'Unknown';
+            }
+        }
 
-            navigator.clipboard.writeText(dataString).then(() => {
-                showSuccess('Complete NFC data copied to clipboard!');
+        function loadSavedTags() {
+            const container = document.getElementById('saved-tags');
+            container.innerHTML = '';
+
+            if (Object.keys(savedTags).length === 0) {
+                container.innerHTML = '<div style="text-align: center; color: #666; padding: 40px;">No tags saved yet. Scan some tags first!</div>';
+                return;
+            }
+
+            Object.values(savedTags).forEach(tag => {
+                const tagElement = createTagElement(tag);
+                container.appendChild(tagElement);
             });
         }
 
-        function showTechnicalDetails() {
-            const details = `
-Technical NFC Details:
-- ISO Standard: ${nfcData.iso}
-- Memory: ${nfcData.memorySize} bytes (${nfcData.pages} pages)
-- ATQA: ${nfcData.atqa}
-- SAK: ${nfcData.sak}
-- Format: ${nfcData.ndefFormat}
-- Writable: ${nfcData.writable ? 'Yes' : 'No'}
-- Password Protected: ${nfcData.passwordProtected ? 'Yes' : 'No'}
-- Record Type: ${nfcData.recordType}
-- Format: ${nfcData.format}
-- RFC: ${nfcData.rfc}
+        function createTagElement(tag) {
+            const div = document.createElement('div');
+            div.className = 'tag-item';
+            div.onclick = () => selectTag(tag);
+            
+            div.innerHTML = `
+                <div class="tag-header">
+                    <div class="tag-name">${tag.name}</div>
+                    <div class="tag-type">${tag.tagType || 'Unknown'}</div>
+                </div>
+                <div class="tag-details">
+                    <strong>UID:</strong> ${tag.uid || 'Unknown'}<br>
+                    <strong>Text:</strong> ${tag.text || 'No text data'}<br>
+                    <strong>Records:</strong> ${tag.records ? tag.records.length : 0}<br>
+                    <strong>Scanned:</strong> ${new Date(tag.scannedAt).toLocaleString()}
+                </div>
+                <div class="tag-preview">
+                    ${tag.payload_hex || 'No payload data'}
+                </div>
+                <div style="margin-top: 10px;">
+                    ${tag.text ? '<span class="feature-badge">Text</span>' : ''}
+                    ${tag.url ? '<span class="feature-badge">URL</span>' : ''}
+                    ${tag.records && tag.records.length > 1 ? '<span class="feature-badge">Multi-Record</span>' : ''}
+                    <span class="feature-badge">Cloneable</span>
+                </div>
             `;
-            alert(details.trim());
+            
+            return div;
+        }
+
+        function selectTag(tag) {
+            selectedTag = tag;
+            
+            // Update visual selection
+            document.querySelectorAll('.tag-item').forEach(item => item.classList.remove('selected'));
+            event.currentTarget.classList.add('selected');
+            
+            showSuccess(`Selected: ${tag.name}`);
+            
+            // Auto-switch to emulation tab
+            setTimeout(() => {
+                switchTab('emulate');
+            }, 1000);
+        }
+
+        function updateEmulationPanel() {
+            const panel = document.getElementById('emulation-panel');
+            const noTagDiv = document.getElementById('no-tag-selected');
+            const display = document.getElementById('selected-tag-display');
+            
+            if (!selectedTag) {
+                panel.classList.remove('active');
+                noTagDiv.style.display = 'block';
+                return;
+            }
+            
+            noTagDiv.style.display = 'none';
+            panel.classList.add('active');
+            
+            display.innerHTML = `
+                <h4>${selectedTag.name}</h4>
+                <div style="margin: 10px 0;">
+                    <strong>Type:</strong> ${selectedTag.tagType}<br>
+                    <strong>UID:</strong> ${selectedTag.uid}<br>
+                    <strong>Text:</strong> ${selectedTag.text || 'None'}<br>
+                    <strong>Records:</strong> ${selectedTag.records ? selectedTag.records.length : 0}
+                </div>
+                <div class="raw-data-display">
+                    ${selectedTag.payload_hex || 'No payload data available'}
+                </div>
+            `;
+        }
+
+        async function startEmulation() {
+            if (!selectedTag) {
+                showError('No tag selected for emulation');
+                return;
+            }
+
+            try {
+                if (!ndefReader) {
+                    ndefReader = new NDEFReader();
+                }
+
+                // Create NDEF message from selected tag
+                const records = [];
+                
+                if (selectedTag.text) {
+                    records.push({
+                        recordType: "text",
+                        lang: selectedTag.language || "en",
+                        data: selectedTag.text
+                    });
+                }
+
+                if (selectedTag.url) {
+                    records.push({
+                        recordType: "url",
+                        data: selectedTag.url
+                    });
+                }
+
+                // Add custom records if available
+                if (selectedTag.records) {
+                    selectedTag.records.forEach(record => {
+                        if (record.recordType !== 'text' && record.recordType !== 'url') {
+                            records.push(record);
+                        }
+                    });
+                }
+
+                if (records.length === 0) {
+                    showError('No emulatable data in selected tag');
+                    return;
+                }
+
+                showSuccess(`Emulating: ${selectedTag.name} with ${records.length} record(s)`);
+                showInfo('Your device is now emulating the selected tag. Bring another NFC device close to read it.');
+
+            } catch (error) {
+                showError('Emulation failed: ' + error.message);
+            }
+        }
+
+        async function writeToTag() {
+            if (!selectedTag) {
+                showError('No tag selected for writing');
+                return;
+            }
+
+            try {
+                if (!ndefReader) {
+                    ndefReader = new NDEFReader();
+                }
+
+                const records = [];
+                
+                if (selectedTag.text) {
+                    records.push({
+                        recordType: "text",
+                        lang: selectedTag.language || "en",
+                        data: selectedTag.text
+                    });
+                }
+
+                await ndefReader.write({ records });
+                showSuccess('Successfully cloned tag data to physical tag!');
+
+            } catch (error) {
+                showError('Write failed: ' + error.message);
+            }
+        }
+
+        function shareTag() {
+            if (!selectedTag) return;
+
+            const shareData = {
+                name: selectedTag.name,
+                type: selectedTag.tagType,
+                uid: selectedTag.uid,
+                text: selectedTag.text,
+                payload: selectedTag.payload_hex,
+                records: selectedTag.records
+            };
+
+            const shareText = `NFC Tag: ${selectedTag.name}
+Type: ${selectedTag.tagType}
+UID: ${selectedTag.uid}
+Text: ${selectedTag.text || 'None'}
+Data: ${selectedTag.payload_hex || 'None'}`;
+
+            if (navigator.share) {
+                navigator.share({
+                    title: `NFC Tag: ${selectedTag.name}`,
+                    text: shareText
+                });
+            } else {
+                navigator.clipboard.writeText(shareText).then(() => {
+                    showSuccess('Tag data copied to clipboard!');
+                });
+            }
+        }
+
+        function exportAllTags() {
+            const dataStr = JSON.stringify(savedTags, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `nfc-tags-export-${new Date().toISOString().split('T')[0]}.json`;
+            link.click();
+            URL.revokeObjectURL(url);
+            showSuccess('All tags exported successfully!');
+        }
+
+        function clearAllTags() {
+            if (confirm('Are you sure you want to delete all saved tags?')) {
+                savedTags = {};
+                selectedTag = null;
+                saveTagsToStorage();
+                loadSavedTags();
+                updateEmulationPanel();
+                showSuccess('All tags cleared from library');
+            }
+        }
+
+        function saveTagsToStorage() {
+            try {
+                localStorage.setItem('nfc_saved_tags', JSON.stringify(savedTags));
+            } catch (error) {
+                console.warn('Could not save to localStorage:', error);
+            }
+        }
+
+        function loadTagsFromStorage() {
+            try {
+                const stored = localStorage.getItem('nfc_saved_tags');
+                if (stored) {
+                    const loaded = JSON.parse(stored);
+                    savedTags = { ...savedTags, ...loaded };
+                }
+            } catch (error) {
+                console.warn('Could not load from localStorage:', error);
+            }
+        }
+
+        function updateProgress(percent) {
+            document.getElementById('scan-progress').style.width = percent + '%';
         }
 
         function showSuccess(message) {
@@ -615,14 +913,9 @@ Technical NFC Details:
         }
 
         function showMessage(msgId, textId, message) {
-            // Hide all messages
             document.querySelectorAll('.message').forEach(msg => msg.style.display = 'none');
-            
-            // Show specific message
             document.getElementById(msgId).style.display = 'block';
             document.getElementById(textId).textContent = message;
-            
-            // Auto-hide after 5 seconds
             setTimeout(() => {
                 document.getElementById(msgId).style.display = 'none';
             }, 5000);
@@ -630,7 +923,8 @@ Technical NFC Details:
 
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {
-            checkNFCSupport();
+            loadTagsFromStorage();
+            loadSavedTags();
         });
     </script>
 </body>
@@ -639,18 +933,78 @@ Technical NFC Details:
 
 @app.route('/')
 def index():
-    """Main Android NFC emulator page"""
+    """Main NFC scanner and emulator page"""
     return render_template_string(HTML_TEMPLATE, 
-                                nfc_data=NFC_DATA, 
-                                nfc_data_json=json.dumps(NFC_DATA))
+                                saved_tags_json=json.dumps(SAVED_TAGS))
+
+@app.route('/api/tags', methods=['GET'])
+def get_all_tags():
+    """Get all saved tags"""
+    return jsonify(SAVED_TAGS)
+
+@app.route('/api/tags', methods=['POST'])
+def save_tag():
+    """Save a new scanned tag"""
+    tag_data = request.get_json()
+    tag_id = tag_data.get('id', f"tag_{int(time.time())}")
+    SAVED_TAGS[tag_id] = tag_data
+    return jsonify({"status": "success", "tag_id": tag_id})
+
+@app.route('/api/tags/<tag_id>', methods=['DELETE'])
+def delete_tag(tag_id):
+    """Delete a specific tag"""
+    if tag_id in SAVED_TAGS:
+        del SAVED_TAGS[tag_id]
+        return jsonify({"status": "success"})
+    return jsonify({"status": "error", "message": "Tag not found"}), 404
+
+@app.route('/api/tags/<tag_id>/emulate', methods=['POST'])
+def emulate_tag(tag_id):
+    """Start emulating a specific tag"""
+    if tag_id not in SAVED_TAGS:
+        return jsonify({"status": "error", "message": "Tag not found"}), 404
+    
+    tag = SAVED_TAGS[tag_id]
+    return jsonify({
+        "status": "emulation_started",
+        "tag": tag,
+        "emulation_data": {
+            "ndef_records": tag.get('records', []),
+            "uid": tag.get('uid'),
+            "payload": tag.get('payload_hex'),
+            "instructions": [
+                "Hold your device near another NFC-enabled device",
+                "The other device should detect this tag data",
+                "Emulation will continue until stopped"
+            ]
+        }
+    })
+
+@app.route('/api/clone/<tag_id>', methods=['POST'])
+def clone_tag_to_physical(tag_id):
+    """Clone a saved tag to a physical NFC tag"""
+    if tag_id not in SAVED_TAGS:
+        return jsonify({"status": "error", "message": "Tag not found"}), 404
+    
+    tag = SAVED_TAGS[tag_id]
+    return jsonify({
+        "status": "clone_ready",
+        "message": "Place a blank NFC tag near your device to clone",
+        "source_tag": tag,
+        "clone_data": {
+            "text": tag.get('text'),
+            "records": tag.get('records', []),
+            "payload": tag.get('payload_hex')
+        }
+    })
 
 @app.route('/manifest.json')
 def manifest():
-    """PWA manifest for installing as native app"""
+    """PWA manifest"""
     return jsonify({
-        "name": "NFC Tag Emulator",
-        "short_name": "NFC Emulator",
-        "description": "Full Android NFC Tag Emulation",
+        "name": "NFC Tag Scanner & Emulator",
+        "short_name": "NFC Scanner",
+        "description": "Professional NFC Tag Reading, Saving & Emulation Tool",
         "start_url": "/",
         "display": "standalone",
         "background_color": "#2a5298",
@@ -660,130 +1014,7 @@ def manifest():
                 "src": "/icon-192.png",
                 "sizes": "192x192",
                 "type": "image/png"
-            },
-            {
-                "src": "/icon-512.png", 
-                "sizes": "512x512",
-                "type": "image/png"
             }
-        ]
-    })
-
-@app.route('/android/apk-download')
-def download_android_apk():
-    """Generate Android APK with full HCE emulation"""
-    
-    # Android APK structure for HCE NFC emulation
-    apk_info = {
-        "app_name": "NFC Tag Emulator",
-        "package_name": "com.nfc.emulator.tag",
-        "version": "1.0.0",
-        "permissions": [
-            "android.permission.NFC",
-            "android.permission.WRITE_EXTERNAL_STORAGE"
-        ],
-        "features": [
-            "android.hardware.nfc.hce"
-        ],
-        "nfc_data": NFC_DATA,
-        "hce_service": {
-            "aid": "F0010203040506",  # Application ID for HCE
-            "service_name": "NFCTagEmulationService",
-            "category": "other"
-        }
-    }
-    
-    return jsonify({
-        "status": "apk_generation_started",
-        "message": "Android APK with full Host Card Emulation support",
-        "apk_info": apk_info,
-        "download_instructions": [
-            "Enable 'Unknown Sources' in Android Settings",
-            "Download and install the APK",
-            "Grant NFC permissions when prompted",
-            "Your phone will emulate the NTAG213 tag",
-            "Other devices can read your tag data via NFC"
-        ],
-        "technical_details": {
-            "emulation_type": "Host Card Emulation (HCE)",
-            "supported_android": "4.4+ (API 19+)",
-            "nfc_tech": ["IsoDep", "NfcA", "Ndef"],
-            "tag_emulation": "Full NTAG213 compatibility"
-        },
-        "note": "This is a demonstration. Real APK generation requires Android SDK and signing certificates."
-    })
-
-@app.route('/qr')
-def generate_qr():
-    """Generate QR code with complete NFC data"""
-    # Include more comprehensive data in QR code
-    qr_data = f"NFC:{NFC_DATA['text']}|UID:{NFC_DATA['uid']}|TYPE:{NFC_DATA['tagType']}"
-    
-    qr = qrcode.QRCode(
-        version=2,
-        error_correction=qrcode.constants.ERROR_CORRECT_M,
-        box_size=8,
-        border=4,
-    )
-    qr.add_data(qr_data)
-    qr.make(fit=True)
-    
-    img = qr.make_image(fill_color="#2a5298", back_color="white")
-    
-    img_buffer = io.BytesIO()
-    img.save(img_buffer, format='PNG')
-    img_buffer.seek(0)
-    
-    return Response(img_buffer.getvalue(), mimetype='image/png')
-
-@app.route('/api/nfc/ndef')
-def api_ndef_record():
-    """Get NDEF record structure for Android development"""
-    return jsonify({
-        "ndef_record": NDEF_RECORD,
-        "raw_ndef": {
-            "tnf": NDEF_RECORD["tnf"],
-            "type": list(NDEF_RECORD["type"].encode()),
-            "id": list(NDEF_RECORD["id"].encode()),
-            "payload": NDEF_RECORD["payload"]
-        },
-        "android_hce": {
-            "aid": "F0010203040506",
-            "service_intent": "android.nfc.cardemulation.action.HOST_APDU_SERVICE",
-            "apdu_commands": [
-                "00A40400" + f"{len(NFC_DATA['text']):02X}" + NFC_DATA['text'].encode().hex()
-            ]
-        },
-        "emulation_guide": {
-            "step1": "Create Android project with NFC permissions",
-            "step2": "Implement HostApduService",
-            "step3": "Register HCE service in manifest",
-            "step4": "Handle APDU commands with your NFC data",
-            "step5": "Enable HCE emulation in NFC settings"
-        }
-    })
-
-@app.route('/api/android/permissions')
-def android_permissions():
-    """Get required Android permissions and setup"""
-    return jsonify({
-        "manifest_permissions": [
-            '<uses-permission android:name="android.permission.NFC" />',
-            '<uses-feature android:name="android.hardware.nfc" android:required="true" />',
-            '<uses-feature android:name="android.hardware.nfc.hce" android:required="true" />'
-        ],
-        "gradle_dependencies": [
-            "implementation 'androidx.core:core:1.8.0'",
-            "implementation 'androidx.appcompat:appcompat:1.4.2'"
-        ],
-        "nfc_service_registration": {
-            "service_declaration": '<service android:name=".NFCEmulationService" android:exported="true" android:permission="android.permission.BIND_NFC_SERVICE">',
-            "intent_filter": '<action android:name="android.nfc.cardemulation.action.HOST_APDU_SERVICE" />',
-            "meta_data": '<meta-data android:name="android.nfc.cardemulation.host_apdu_service" android:resource="@xml/apduservice" />'
-        },
-        "test_commands": [
-            "adb shell am start -n com.nfc.emulator.tag/.MainActivity",
-            "adb shell settings put secure nfc_hce_on 1"
         ]
     })
 
@@ -792,9 +1023,9 @@ def health_check():
     """Health check endpoint"""
     return jsonify({
         'status': 'healthy',
-        'service': 'Android NFC Tag Emulator',
-        'version': '3.0.0',
-        'nfc_data_version': NFC_DATA['text'],
+        'service': 'NFC Tag Scanner & Emulator',
+        'version': '4.0.0',
+        'saved_tags_count': len(SAVED_TAGS),
         'timestamp': datetime.now().isoformat()
     })
 
