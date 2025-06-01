@@ -33,7 +33,7 @@ SAVED_TAGS = {
     },
     "tag_2": {
         "id": "tag_2", 
-        "name": "Fujitsu ISO 7816",
+        "name": "Fujitsu ISO 7816 Card",
         "tagType": "ISO 7816",
         "manufacturer": "Fujitsu",
         "iso": "ISO 7816",
@@ -42,7 +42,10 @@ SAVED_TAGS = {
         "technologies": ["Unknown"],
         "scannedAt": "2025-05-31T23:02:00Z",
         "payload_hex": "08 51 12 50",
-        "payload_bytes": [0x08, 0x51, 0x12, 0x50]
+        "payload_bytes": [0x08, 0x51, 0x12, 0x50],
+        "memorySize": 0,
+        "atqa": "Unknown",
+        "sak": "Unknown"
     }
 }
 
@@ -54,6 +57,7 @@ HTML_TEMPLATE = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NFC Tag Cloner - True Emulation</title>
     <meta name="theme-color" content="#2a5298">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -336,8 +340,8 @@ HTML_TEMPLATE = """
     <div class="container">
         <div class="header">
             <div class="nfc-logo">⚠️</div>
-            <div class="title">NFC True Emulation</div>
-            <div class="subtitle">Professional Tag Cloning</div>
+            <div class="title">NFC Scanner & Exporter</div>
+            <div class="subtitle">Scan Tags → Export for NFC Tools Pro</div>
         </div>
 
         <div class="limitation-notice">
@@ -395,9 +399,18 @@ HTML_TEMPLATE = """
                 <h3>✅ True Emulation Solutions</h3>
                 
                 <div class="solution-card">
-                    <h4>🎯 Solution 1: Native Android App</h4>
+                    <h4>📱 Solution 1: NFC Tools Pro Export</h4>
+                    <p>Export scanned tags for NFC Tools Pro (supports emulation):</p>
+                    <button class="btn btn-success" onclick="exportForNFCToolsPro()">
+                        📱 Export for NFC Tools Pro
+                    </button>
+                    <p><small>Import into NFC Tools Pro for true emulation</small></p>
+                </div>
+
+                <div class="solution-card">
+                    <h4>🎯 Solution 2: Native Android App</h4>
                     <p>Download a native Android app with Host Card Emulation (HCE) support:</p>
-                    <button class="btn btn-success" onclick="downloadNativeApp()">
+                    <button class="btn btn-warning" onclick="downloadNativeApp()">
                         📱 Download True Emulation App
                     </button>
                     <p><small>This app can truly emulate any scanned tag hardware</small></p>
@@ -420,14 +433,15 @@ HTML_TEMPLATE = """
                 </div>
 
                 <div class="instructions">
-                    <h4>🚀 How True Emulation Works</h4>
+                    <h4>🚀 Recommended Workflow</h4>
                     <ol>
                         <li><strong>Scan tags</strong> with this web app (saves all data perfectly)</li>
-                        <li><strong>Download native app</strong> with real HCE emulation</li>
-                        <li><strong>Import saved tags</strong> into the native app</li>
-                        <li><strong>True emulation</strong> - your phone becomes the actual tag</li>
-                        <li><strong>Perfect cloning</strong> - other devices can't tell the difference</li>
+                        <li><strong>Export for NFC Tools Pro</strong> - get .nfc files ready to import</li>
+                        <li><strong>Open NFC Tools Pro</strong> and import the exported files</li>
+                        <li><strong>True emulation</strong> - NFC Tools Pro can emulate the tags</li>
+                        <li><strong>Perfect cloning</strong> - other devices read your emulated data</li>
                     </ol>
+                    <p><strong>💡 NFC Tools Pro</strong> is available on Google Play Store and supports real tag emulation!</p>
                 </div>
             </div>
 
@@ -487,6 +501,11 @@ HTML_TEMPLATE = """
                     savedTags[tagData.id] = tagData;
                     showSuccess(`Tag scanned: ${tagData.name} (${tagData.tagType})`);
                     loadSavedTags();
+                    
+                    // Show immediate export option
+                    if (confirm(`Tag "${tagData.name}" scanned successfully!\n\nExport for NFC Tools Pro now?`)) {
+                        exportSingleTagForNFCToolsPro(tagData);
+                    }
                 });
 
                 showSuccess('Scanning active! Hold NFC tags near your device.');
@@ -580,6 +599,11 @@ HTML_TEMPLATE = """
                         <strong>Text:</strong> ${tag.text || 'No text'}<br>
                         <strong>Scanned:</strong> ${new Date(tag.scannedAt).toLocaleString()}
                     </div>
+                    <div style="margin-top: 10px;">
+                        <button class="btn btn-success" style="width: auto; padding: 8px 12px; margin: 2px; font-size: 12px;" onclick="event.stopPropagation(); exportSingleTagForNFCToolsPro(${JSON.stringify(tag).replace(/"/g, '&quot;')})">
+                            📱 Export for NFC Tools Pro
+                        </button>
+                    </div>
                 `;
                 
                 container.appendChild(tagDiv);
@@ -590,7 +614,7 @@ HTML_TEMPLATE = """
             selectedTag = tag;
             document.querySelectorAll('.tag-item').forEach(item => item.classList.remove('selected'));
             event.currentTarget.classList.add('selected');
-            showSuccess(`Selected: ${tag.name} - Ready for native app emulation`);
+            showSuccess(`Selected: ${tag.name} - Ready for NFC Tools Pro export`);
         }
 
         async function downloadNativeApp() {
@@ -634,14 +658,162 @@ Download starting...`);
             window.open('/developer-guide', '_blank');
         }
 
+        function exportForNFCToolsPro() {
+            if (Object.keys(savedTags).length === 0) {
+                showError('No tags to export. Scan some tags first!');
+                return;
+            }
+
+            // Create NFC Tools Pro compatible format
+            const nfcToolsData = Object.values(savedTags).map(tag => createNFCToolsFormat(tag));
+            
+            // Create ZIP file with individual .nfc files
+            const zip = new JSZip();
+            
+            nfcToolsData.forEach((data, index) => {
+                const filename = `${data.name.replace(/[^a-zA-Z0-9]/g, '_')}.nfc`;
+                zip.file(filename, JSON.stringify(data, null, 2));
+            });
+            
+            zip.generateAsync({type:"blob"}).then(function(content) {
+                const url = URL.createObjectURL(content);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `nfc-tags-for-nfc-tools-pro-${new Date().toISOString().split('T')[0]}.zip`;
+                link.click();
+                URL.revokeObjectURL(url);
+                
+                showSuccess(`${nfcToolsData.length} tags exported for NFC Tools Pro! Import the .nfc files in the app.`);
+                
+                // Show import instructions
+                setTimeout(() => {
+                    alert(`📱 NFC Tools Pro Import Instructions:
+
+1. Install "NFC Tools Pro" from Google Play Store
+2. Extract the downloaded ZIP file
+3. Open NFC Tools Pro
+4. Go to "Other" → "Import/Export" → "Import"
+5. Select the .nfc files from the extracted folder
+6. Your scanned tags will appear in NFC Tools Pro
+7. Use "Card Emulation" feature to emulate any tag!
+
+💡 NFC Tools Pro has advanced emulation features that work with most NFC readers.`);
+                }, 2000);
+            });
+        }
+
+        function exportSingleTagForNFCToolsPro(tag) {
+            const nfcToolsData = createNFCToolsFormat(tag);
+            const filename = `${tag.name.replace(/[^a-zA-Z0-9]/g, '_')}.nfc`;
+            
+            const dataStr = JSON.stringify(nfcToolsData, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            link.click();
+            URL.revokeObjectURL(url);
+            
+            showSuccess(`Tag exported as ${filename} for NFC Tools Pro!`);
+        }
+
+        function createNFCToolsFormat(tag) {
+            // NFC Tools Pro compatible format
+            const nfcToolsFormat = {
+                "name": tag.name,
+                "description": `Scanned ${tag.tagType} tag`,
+                "uuid": tag.uid || tag.serialNumber,
+                "type": mapToNFCToolsType(tag.tagType),
+                "manufacturer": tag.manufacturer || "Unknown",
+                "size": tag.memorySize || 180,
+                "writeable": tag.writable !== false,
+                "locked": tag.passwordProtected === true,
+                "date": tag.scannedAt,
+                "records": []
+            };
+
+            // Add NDEF records
+            if (tag.text) {
+                nfcToolsFormat.records.push({
+                    "type": "text",
+                    "payload": tag.text,
+                    "language": tag.language || "en",
+                    "encoding": "UTF-8"
+                });
+            }
+
+            if (tag.url) {
+                nfcToolsFormat.records.push({
+                    "type": "uri",
+                    "payload": tag.url
+                });
+            }
+
+            // Add raw data if available
+            if (tag.payload_hex) {
+                nfcToolsFormat.records.push({
+                    "type": "raw",
+                    "payload": tag.payload_hex,
+                    "format": "hex"
+                });
+            }
+
+            // Add technical details for emulation
+            nfcToolsFormat.technical = {
+                "uid": tag.uid || tag.serialNumber,
+                "atqa": tag.atqa || "0044",
+                "sak": tag.sak || "00",
+                "payload_bytes": tag.payload_bytes || [],
+                "iso_standard": tag.iso || "ISO 14443-3A"
+            };
+
+            return nfcToolsFormat;
+        }
+
+        function mapToNFCToolsType(tagType) {
+            const typeMap = {
+                "NTAG213": "NTAG213",
+                "NTAG215": "NTAG215", 
+                "NTAG216": "NTAG216",
+                "ISO 7816": "ISO7816",
+                "Mifare Classic": "MIFARE_CLASSIC",
+                "Unknown NFC Tag": "UNKNOWN"
+            };
+            return typeMap[tagType] || "UNKNOWN";
+        }
+
         function exportForProTools() {
             const exportData = {
-                format: "proxmark3",
+                format: "multi_tool",
+                timestamp: new Date().toISOString(),
                 tags: Object.values(savedTags).map(tag => ({
+                    name: tag.name,
                     uid: tag.uid,
-                    payload: tag.payload_hex,
+                    payload_hex: tag.payload_hex,
+                    payload_bytes: tag.payload_bytes,
                     type: tag.tagType,
-                    manufacturer: tag.manufacturer
+                    manufacturer: tag.manufacturer,
+                    atqa: tag.atqa,
+                    sak: tag.sak,
+                    // Proxmark3 format
+                    proxmark3: {
+                        uid: tag.uid,
+                        type: tag.tagType,
+                        data: tag.payload_hex
+                    },
+                    // Flipper Zero format
+                    flipper: {
+                        uid: tag.uid.replace(/:/g, ' '),
+                        data: tag.payload_hex,
+                        type: tag.tagType
+                    },
+                    // Chameleon format
+                    chameleon: {
+                        uid: tag.uid.replace(/:/g, ''),
+                        data: tag.payload_bytes,
+                        type: mapToChameleonType(tag.tagType)
+                    }
                 }))
             };
 
@@ -650,11 +822,22 @@ Download starting...`);
             const url = URL.createObjectURL(dataBlob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = 'nfc-tags-proxmark.json';
+            link.download = `nfc-tags-hardware-tools-${new Date().toISOString().split('T')[0]}.json`;
             link.click();
             URL.revokeObjectURL(url);
             
-            showSuccess('Tags exported for Proxmark3/Flipper Zero!');
+            showSuccess('Tags exported for Proxmark3/Flipper Zero/Chameleon!');
+        }
+
+        function mapToChameleonType(tagType) {
+            const chameleonMap = {
+                "NTAG213": "MF_ULTRALIGHT",
+                "NTAG215": "MF_ULTRALIGHT", 
+                "NTAG216": "MF_ULTRALIGHT",
+                "ISO 7816": "ISO14443A_4",
+                "Mifare Classic": "MF_CLASSIC_1K"
+            };
+            return chameleonMap[tagType] || "MF_ULTRALIGHT";
         }
 
         function showSuccess(message) {
@@ -686,6 +869,84 @@ Download starting...`);
 </body>
 </html>
 """
+
+@app.route('/api/export/nfc-tools-pro', methods=['POST'])
+def export_nfc_tools_pro():
+    """Export tags in NFC Tools Pro format"""
+    tags = request.get_json().get('tags', {})
+    
+    nfc_tools_exports = []
+    for tag_id, tag in tags.items():
+        nfc_tools_format = {
+            "name": tag.get('name', 'Scanned Tag'),
+            "description": f"Scanned {tag.get('tagType', 'Unknown')} tag",
+            "uuid": tag.get('uid', tag.get('serialNumber', '')),
+            "type": map_to_nfc_tools_type(tag.get('tagType', 'Unknown')),
+            "manufacturer": tag.get('manufacturer', 'Unknown'),
+            "size": tag.get('memorySize', 180),
+            "writeable": tag.get('writable', True),
+            "locked": tag.get('passwordProtected', False),
+            "date": tag.get('scannedAt', datetime.now().isoformat()),
+            "records": [],
+            "technical": {
+                "uid": tag.get('uid', tag.get('serialNumber', '')),
+                "atqa": tag.get('atqa', '0044'),
+                "sak": tag.get('sak', '00'),
+                "payload_bytes": tag.get('payload_bytes', []),
+                "iso_standard": tag.get('iso', 'ISO 14443-3A')
+            }
+        }
+        
+        # Add NDEF records
+        if tag.get('text'):
+            nfc_tools_format["records"].append({
+                "type": "text",
+                "payload": tag['text'],
+                "language": tag.get('language', 'en'),
+                "encoding": "UTF-8"
+            })
+        
+        if tag.get('url'):
+            nfc_tools_format["records"].append({
+                "type": "uri", 
+                "payload": tag['url']
+            })
+            
+        if tag.get('payload_hex'):
+            nfc_tools_format["records"].append({
+                "type": "raw",
+                "payload": tag['payload_hex'],
+                "format": "hex"
+            })
+            
+        nfc_tools_exports.append(nfc_tools_format)
+    
+    return jsonify({
+        "status": "success",
+        "export_format": "NFC Tools Pro",
+        "tags_exported": len(nfc_tools_exports),
+        "data": nfc_tools_exports,
+        "instructions": [
+            "Save each tag as a .nfc file",
+            "Install NFC Tools Pro from Google Play Store", 
+            "Open NFC Tools Pro",
+            "Go to Other → Import/Export → Import",
+            "Select your .nfc files",
+            "Use Card Emulation to emulate tags"
+        ]
+    })
+
+def map_to_nfc_tools_type(tag_type):
+    """Map tag types to NFC Tools Pro format"""
+    type_map = {
+        "NTAG213": "NTAG213",
+        "NTAG215": "NTAG215",
+        "NTAG216": "NTAG216", 
+        "ISO 7816": "ISO7816",
+        "Mifare Classic": "MIFARE_CLASSIC",
+        "Unknown NFC Tag": "UNKNOWN"
+    }
+    return type_map.get(tag_type, "UNKNOWN")
 
 @app.route('/android/true-emulator.apk')
 def download_hce_apk():
