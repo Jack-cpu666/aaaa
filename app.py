@@ -12,12 +12,14 @@ import tempfile
 
 app = Flask(__name__)
 
-# Updated with the Fujitsu tag data from screenshot
+# Updated with both NFC and 125kHz RFID cards
 SAVED_TAGS = {
     "tag_1": {
         "id": "tag_1",
         "name": "Original NTAG213",
         "tagType": "NTAG213",
+        "frequency": "13.56MHz",
+        "technology": "NFC",
         "manufacturer": "NXP", 
         "iso": "ISO 14443-3A",
         "serialNumber": "04:D6:1B:3A:F3:1C:90",
@@ -35,6 +37,8 @@ SAVED_TAGS = {
         "id": "tag_2", 
         "name": "Fujitsu ISO 7816 Card",
         "tagType": "ISO 7816",
+        "frequency": "13.56MHz",
+        "technology": "NFC",
         "manufacturer": "Fujitsu",
         "iso": "ISO 7816",
         "serialNumber": "08:51:12:50",
@@ -46,6 +50,20 @@ SAVED_TAGS = {
         "memorySize": 0,
         "atqa": "Unknown",
         "sak": "Unknown"
+    },
+    "rfid_1": {
+        "id": "rfid_1",
+        "name": "Office Access Badge",
+        "tagType": "HID_Prox", 
+        "frequency": "125kHz",
+        "technology": "RFID",
+        "manufacturer": "HID",
+        "cardId": "1234567890",
+        "facilityCode": "123",
+        "rawData": "1E0123456789ABCDEF",
+        "format": "H10301",
+        "scannedAt": "2025-05-31T15:00:00Z",
+        "emulationMethod": "Proxmark3/T5577"
     }
 }
 
@@ -340,20 +358,101 @@ HTML_TEMPLATE = """
     <div class="container">
         <div class="header">
             <div class="nfc-logo">⚠️</div>
-            <div class="title">NFC Scanner & Exporter</div>
-            <div class="subtitle">Scan Tags → Export for NFC Tools Pro</div>
+            <div class="title">Multi-Frequency Card Cloner</div>
+            <div class="subtitle">NFC (13.56MHz) + RFID (125kHz) Support</div>
         </div>
 
         <div class="limitation-notice">
-            <h3>🚨 Web Browser Limitation Detected</h3>
-            <p>Web browsers cannot truly emulate NFC tags. You're seeing default Android NFC values because browser security prevents hardware-level emulation.</p>
+            <h3>📡 Multi-Frequency RFID/NFC Scanner</h3>
+            <p><strong>13.56MHz NFC:</strong> Scan directly with your phone<br>
+            <strong>125kHz RFID:</strong> Use external hardware (instructions below)</p>
         </div>
 
         <div class="main-card">
             <div class="tab-nav">
-                <div class="tab active" onclick="switchTab('scan')">📱 Scan</div>
+                <div class="tab active" onclick="switchTab('scan')">📱 NFC Scan</div>
+                <div class="tab" onclick="switchTab('rfid125')">🏢 125kHz RFID</div>
                 <div class="tab" onclick="switchTab('library')">📚 Library</div>
                 <div class="tab" onclick="switchTab('solutions')">✅ Solutions</div>
+            </div>
+
+            <!-- 125kHz RFID Tab -->
+            <div class="tab-content" id="rfid125-content">
+                <h3>🏢 125kHz RFID Cards (Office Badges)</h3>
+                <p>Your phone cannot read 125kHz cards directly. Use external hardware:</p>
+                
+                <div class="solution-card">
+                    <h4>📱 Mobile RFID Readers</h4>
+                    <p>Attach a 125kHz reader to your phone:</p>
+                    <ul>
+                        <li><strong>ACR122U</strong> - USB NFC/RFID reader with OTG adapter</li>
+                        <li><strong>Proxmark3 Easy</strong> - Professional RFID tool</li>
+                        <li><strong>RFID RC522</strong> - Cheap reader with Arduino</li>
+                    </ul>
+                    <button class="btn btn-primary" onclick="setupExternalReader()">
+                        🔌 Setup External Reader
+                    </button>
+                </div>
+
+                <div class="solution-card">
+                    <h4>💻 Computer-Based Scanning</h4>
+                    <p>Use computer software with RFID hardware:</p>
+                    <button class="btn btn-warning" onclick="showComputerInstructions()">
+                        💻 Get Computer Instructions
+                    </button>
+                </div>
+
+                <div class="solution-card">
+                    <h4>📋 Manual Entry</h4>
+                    <p>Enter 125kHz card data manually if you have it:</p>
+                    <button class="btn btn-secondary" onclick="manualRFIDEntry()">
+                        ⌨️ Manual Entry
+                    </button>
+                </div>
+
+                <div class="limitation-card">
+                    <h4>🔍 125kHz Card Types We Support</h4>
+                    <ul>
+                        <li><strong>HID Prox</strong> - Most office access cards</li>
+                        <li><strong>EM4100/EM4102</strong> - Common ID cards</li>
+                        <li><strong>Indala</strong> - Industrial access systems</li>
+                        <li><strong>AWID</strong> - Access control cards</li>
+                        <li><strong>T5577</strong> - Programmable/cloneable cards</li>
+                    </ul>
+                </div>
+
+                <div id="manual-rfid-form" style="display: none; margin-top: 20px; background: #f8f9fa; padding: 20px; border-radius: 12px;">
+                    <h4>📝 Manual 125kHz Card Entry</h4>
+                    <div style="margin: 10px 0;">
+                        <label><strong>Card Name:</strong></label><br>
+                        <input type="text" id="rfid-name" placeholder="Office Badge" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
+                    </div>
+                    <div style="margin: 10px 0;">
+                        <label><strong>Card Type:</strong></label><br>
+                        <select id="rfid-type" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
+                            <option value="HID_Prox">HID Prox</option>
+                            <option value="EM4100">EM4100</option>
+                            <option value="EM4102">EM4102</option>
+                            <option value="Indala">Indala</option>
+                            <option value="AWID">AWID</option>
+                            <option value="T5577">T5577</option>
+                        </select>
+                    </div>
+                    <div style="margin: 10px 0;">
+                        <label><strong>Card ID (Hex):</strong></label><br>
+                        <input type="text" id="rfid-id" placeholder="1234567890" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
+                    </div>
+                    <div style="margin: 10px 0;">
+                        <label><strong>Facility Code (if applicable):</strong></label><br>
+                        <input type="text" id="rfid-facility" placeholder="123" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
+                    </div>
+                    <div style="margin: 10px 0;">
+                        <label><strong>Raw Data (Hex):</strong></label><br>
+                        <input type="text" id="rfid-raw" placeholder="1234567890ABCDEF" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
+                    </div>
+                    <button class="btn btn-success" onclick="saveManualRFID()">💾 Save RFID Card</button>
+                    <button class="btn btn-secondary" onclick="cancelManualEntry()">❌ Cancel</button>
+                </div>
             </div>
 
             <!-- Scan Tab -->
@@ -399,12 +498,21 @@ HTML_TEMPLATE = """
                 <h3>✅ True Emulation Solutions</h3>
                 
                 <div class="solution-card">
-                    <h4>📱 Solution 1: NFC Tools Pro Export</h4>
-                    <p>Export scanned tags for NFC Tools Pro (supports emulation):</p>
+                    <h4>📱 Solution 1: NFC Tools Pro (13.56MHz)</h4>
+                    <p>Export NFC tags for NFC Tools Pro emulation:</p>
                     <button class="btn btn-success" onclick="exportForNFCToolsPro()">
-                        📱 Export for NFC Tools Pro
+                        📱 Export NFC Tags
                     </button>
-                    <p><small>Import into NFC Tools Pro for true emulation</small></p>
+                    <p><small>Import into NFC Tools Pro for true NFC emulation</small></p>
+                </div>
+
+                <div class="solution-card">
+                    <h4>🔧 Solution 2: Proxmark3 (125kHz RFID)</h4>
+                    <p>Export 125kHz RFID cards for hardware cloning:</p>
+                    <button class="btn btn-warning" onclick="exportRFIDForProxmark()">
+                        🔧 Export RFID Cards
+                    </button>
+                    <p><small>Use with Proxmark3, T5577 cards, or Flipper Zero</small></p>
                 </div>
 
                 <div class="solution-card">
@@ -433,15 +541,22 @@ HTML_TEMPLATE = """
                 </div>
 
                 <div class="instructions">
-                    <h4>🚀 Recommended Workflow</h4>
+                    <h4>🚀 Complete Workflow</h4>
+                    <p><strong>📱 For NFC Cards (13.56MHz):</strong></p>
                     <ol>
-                        <li><strong>Scan tags</strong> with this web app (saves all data perfectly)</li>
-                        <li><strong>Export for NFC Tools Pro</strong> - get .nfc files ready to import</li>
-                        <li><strong>Open NFC Tools Pro</strong> and import the exported files</li>
-                        <li><strong>True emulation</strong> - NFC Tools Pro can emulate the tags</li>
-                        <li><strong>Perfect cloning</strong> - other devices read your emulated data</li>
+                        <li>Scan NFC tags directly with your phone</li>
+                        <li>Export for NFC Tools Pro</li>
+                        <li>Import into NFC Tools Pro app</li>
+                        <li>Use "Card Emulation" feature</li>
                     </ol>
-                    <p><strong>💡 NFC Tools Pro</strong> is available on Google Play Store and supports real tag emulation!</p>
+                    <p><strong>🏢 For RFID Cards (125kHz):</strong></p>
+                    <ol>
+                        <li>Use external hardware to read 125kHz cards</li>
+                        <li>Enter data manually or import from tools</li>
+                        <li>Export for Proxmark3/Flipper Zero</li>
+                        <li>Clone to T5577 cards or emulate directly</li>
+                    </ol>
+                    <p><strong>💡 Recommended Tools:</strong> NFC Tools Pro (NFC), Proxmark3 (RFID), Flipper Zero (Both)</p>
                 </div>
             </div>
 
@@ -473,9 +588,10 @@ HTML_TEMPLATE = """
         let ndefReader = null;
 
         function switchTab(tabName) {
-            // Update tab buttons
+            // Update tab buttons  
             document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-            document.querySelector(`.tab:nth-child(${tabName === 'scan' ? 1 : tabName === 'library' ? 2 : 3})`).classList.add('active');
+            const tabIndex = tabName === 'scan' ? 1 : tabName === 'rfid125' ? 2 : tabName === 'library' ? 3 : 4;
+            document.querySelector(`.tab:nth-child(${tabIndex})`).classList.add('active');
             
             // Update tab content
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
@@ -588,23 +704,48 @@ HTML_TEMPLATE = """
                 tagDiv.className = 'tag-item';
                 tagDiv.onclick = () => selectTag(tag);
                 
-                tagDiv.innerHTML = `
-                    <div class="tag-header">
-                        <div class="tag-name">${tag.name}</div>
-                        <div class="tag-type">${tag.tagType}</div>
-                    </div>
-                    <div>
-                        <strong>UID:</strong> ${tag.uid}<br>
-                        <strong>Manufacturer:</strong> ${tag.manufacturer}<br>
-                        <strong>Text:</strong> ${tag.text || 'No text'}<br>
-                        <strong>Scanned:</strong> ${new Date(tag.scannedAt).toLocaleString()}
-                    </div>
-                    <div style="margin-top: 10px;">
-                        <button class="btn btn-success" style="width: auto; padding: 8px 12px; margin: 2px; font-size: 12px;" onclick="event.stopPropagation(); exportSingleTagForNFCToolsPro(${JSON.stringify(tag).replace(/"/g, '&quot;')})">
-                            📱 Export for NFC Tools Pro
-                        </button>
-                    </div>
-                `;
+                // Different display for NFC vs RFID
+                if (tag.frequency === '125kHz') {
+                    // 125kHz RFID Card
+                    tagDiv.innerHTML = `
+                        <div class="tag-header">
+                            <div class="tag-name">🏢 ${tag.name}</div>
+                            <div class="tag-type" style="background: #dc3545; color: white;">${tag.tagType}</div>
+                        </div>
+                        <div>
+                            <strong>Frequency:</strong> ${tag.frequency} (RFID)<br>
+                            <strong>Card ID:</strong> ${tag.cardId || 'Unknown'}<br>
+                            <strong>Facility:</strong> ${tag.facilityCode || 'N/A'}<br>
+                            <strong>Format:</strong> ${tag.format || 'Unknown'}<br>
+                            <strong>Added:</strong> ${new Date(tag.scannedAt).toLocaleString()}
+                        </div>
+                        <div style="margin-top: 10px;">
+                            <button class="btn btn-warning" style="width: auto; padding: 8px 12px; margin: 2px; font-size: 12px;" onclick="event.stopPropagation(); exportSingleRFIDCard(${JSON.stringify(tag).replace(/"/g, '&quot;')})">
+                                🔧 Export for Proxmark3
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    // 13.56MHz NFC Card  
+                    tagDiv.innerHTML = `
+                        <div class="tag-header">
+                            <div class="tag-name">📱 ${tag.name}</div>
+                            <div class="tag-type" style="background: #28a745; color: white;">${tag.tagType}</div>
+                        </div>
+                        <div>
+                            <strong>Frequency:</strong> ${tag.frequency || '13.56MHz'} (NFC)<br>
+                            <strong>UID:</strong> ${tag.uid}<br>
+                            <strong>Manufacturer:</strong> ${tag.manufacturer}<br>
+                            <strong>Text:</strong> ${tag.text || 'No text'}<br>
+                            <strong>Scanned:</strong> ${new Date(tag.scannedAt).toLocaleString()}
+                        </div>
+                        <div style="margin-top: 10px;">
+                            <button class="btn btn-success" style="width: auto; padding: 8px 12px; margin: 2px; font-size: 12px;" onclick="event.stopPropagation(); exportSingleTagForNFCToolsPro(${JSON.stringify(tag).replace(/"/g, '&quot;')})">
+                                📱 Export for NFC Tools Pro
+                            </button>
+                        </div>
+                    `;
+                }
                 
                 container.appendChild(tagDiv);
             });
@@ -840,6 +981,274 @@ Download starting...`);
             return chameleonMap[tagType] || "MF_ULTRALIGHT";
         }
 
+        // 125kHz RFID Functions
+        function setupExternalReader() {
+            showInfo('Setting up external 125kHz RFID reader...');
+            
+            const instructions = `🔌 External RFID Reader Setup
+
+OPTION 1: ACR122U with OTG Adapter
+1. Buy ACR122U USB NFC/RFID reader (~$40)
+2. Get USB OTG adapter for your phone
+3. Install "NFC TagInfo" app  
+4. Connect reader → scan 125kHz cards
+5. Export data to this web app
+
+OPTION 2: Proxmark3 Easy (~$50)
+1. Buy Proxmark3 Easy from AliExpress
+2. Install Proxmark3 software on computer
+3. Use commands: "lf search" → "lf em 410x_read"  
+4. Copy hex data to this web app manually
+
+OPTION 3: Arduino + RC522 (~$10)
+1. Buy Arduino Nano + RC522 RFID module
+2. Flash RFID reader firmware
+3. Connect to phone via USB OTG
+4. Read card data through serial monitor
+
+Would you like detailed instructions for any option?`;
+
+            alert(instructions);
+        }
+
+        function showComputerInstructions() {
+            const computerInstructions = `💻 Computer-Based 125kHz Scanning
+
+PROXMARK3 METHOD (Recommended):
+1. Download Proxmark3 software
+2. Connect Proxmark3 device to computer
+3. Run these commands:
+   • lf search (detect card type)
+   • lf em 410x_read (for EM4100/4102)
+   • lf hid read (for HID Prox cards)
+   • lf indala read (for Indala cards)
+
+SOFTWARE OPTIONS:
+• Proxmark3 GUI - User-friendly interface
+• RFIDIOt - Python RFID toolkit  
+• LibNFC - Cross-platform NFC library
+
+HARDWARE NEEDED:
+• Proxmark3 Easy ($50) - Best option
+• ACR122U ($40) - For some 125kHz cards
+• RFID-RC522 + Arduino ($10) - Budget option
+
+EXPORT PROCESS:
+1. Scan card with computer software
+2. Copy hex data (card ID, facility code, raw)
+3. Use "Manual Entry" in this web app
+4. Export for emulation tools`;
+
+            alert(computerInstructions);
+        }
+
+        function manualRFIDEntry() {
+            document.getElementById('manual-rfid-form').style.display = 'block';
+            showInfo('Manual RFID entry form opened. Enter your 125kHz card data below.');
+        }
+
+        function cancelManualEntry() {
+            document.getElementById('manual-rfid-form').style.display = 'none';
+            // Clear form
+            document.getElementById('rfid-name').value = '';
+            document.getElementById('rfid-id').value = '';
+            document.getElementById('rfid-facility').value = '';
+            document.getElementById('rfid-raw').value = '';
+        }
+
+        function saveManualRFID() {
+            const name = document.getElementById('rfid-name').value || 'Unnamed RFID Card';
+            const type = document.getElementById('rfid-type').value;
+            const cardId = document.getElementById('rfid-id').value;
+            const facilityCode = document.getElementById('rfid-facility').value;
+            const rawData = document.getElementById('rfid-raw').value;
+
+            if (!cardId && !rawData) {
+                showError('Please enter at least Card ID or Raw Data');
+                return;
+            }
+
+            const rfidCard = {
+                id: 'rfid_' + Date.now(),
+                name: name,
+                tagType: type,
+                frequency: '125kHz',
+                technology: 'RFID',
+                manufacturer: getRFIDManufacturer(type),
+                cardId: cardId,
+                facilityCode: facilityCode,
+                rawData: rawData,
+                format: getRFIDFormat(type),
+                scannedAt: new Date().toISOString(),
+                emulationMethod: getEmulationMethod(type)
+            };
+
+            savedTags[rfidCard.id] = rfidCard;
+            showSuccess(`125kHz RFID card "${name}" saved successfully!`);
+            
+            cancelManualEntry();
+            loadSavedTags();
+
+            // Offer immediate export
+            if (confirm(`RFID card saved!\n\nExport for emulation tools now?`)) {
+                exportSingleRFIDCard(rfidCard);
+            }
+        }
+
+        function getRFIDManufacturer(type) {
+            const manufacturers = {
+                'HID_Prox': 'HID Global',
+                'EM4100': 'EM Microelectronic',
+                'EM4102': 'EM Microelectronic', 
+                'Indala': 'Motorola/Indala',
+                'AWID': 'Applied Wireless ID',
+                'T5577': 'Atmel'
+            };
+            return manufacturers[type] || 'Unknown';
+        }
+
+        function getRFIDFormat(type) {
+            const formats = {
+                'HID_Prox': 'H10301',
+                'EM4100': 'EM410x',
+                'EM4102': 'EM410x',
+                'Indala': 'Indala26/37',
+                'AWID': 'AWID26',
+                'T5577': 'T5577'
+            };
+            return formats[type] || 'Unknown';
+        }
+
+        function getEmulationMethod(type) {
+            const methods = {
+                'HID_Prox': 'Proxmark3, T5577 clone, Flipper Zero',
+                'EM4100': 'Proxmark3, T5577 clone, Chameleon Mini',
+                'EM4102': 'Proxmark3, T5577 clone, Chameleon Mini',
+                'Indala': 'Proxmark3, T5577 clone',
+                'AWID': 'Proxmark3, T5577 clone',
+                'T5577': 'Direct programming'
+            };
+            return methods[type] || 'Hardware cloning required';
+        }
+
+        function exportSingleRFIDCard(card) {
+            const exportData = {
+                name: card.name,
+                type: card.tagType,
+                frequency: card.frequency,
+                cardId: card.cardId,
+                facilityCode: card.facilityCode,
+                rawData: card.rawData,
+                proxmark3: {
+                    command: generateProxmark3Command(card),
+                    clone_command: generateCloneCommand(card)
+                },
+                flipper: {
+                    format: 'RFID125',
+                    data: card.rawData || card.cardId
+                },
+                t5577_write: generateT5577Command(card)
+            };
+
+            const filename = `${card.name.replace(/[^a-zA-Z0-9]/g, '_')}_125kHz.json`;
+            const dataStr = JSON.stringify(exportData, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            link.click();
+            URL.revokeObjectURL(url);
+
+            showSuccess(`125kHz card exported as ${filename}!`);
+        }
+
+        function generateProxmark3Command(card) {
+            switch(card.tagType) {
+                case 'HID_Prox':
+                    return `lf hid clone --raw ${card.rawData || card.cardId}`;
+                case 'EM4100':
+                case 'EM4102':
+                    return `lf em 410x_clone --id ${card.cardId}`;
+                case 'Indala':
+                    return `lf indala clone --raw ${card.rawData}`;
+                default:
+                    return `lf t5 write --blk 0 --data ${card.rawData || card.cardId}`;
+            }
+        }
+
+        function generateCloneCommand(card) {
+            return `lf t5 write --blk 0 --data ${card.rawData || card.cardId} && lf t5 write --blk 1 --data ${card.cardId}`;
+        }
+
+        function generateT5577Command(card) {
+            return `lf t5 write --blk 0 --data ${card.rawData || card.cardId}`;
+        }
+
+        function exportRFIDForProxmark() {
+            const rfidCards = Object.values(savedTags).filter(tag => tag.frequency === '125kHz');
+            
+            if (rfidCards.length === 0) {
+                showError('No 125kHz RFID cards to export. Add some RFID cards first!');
+                return;
+            }
+
+            const exportData = {
+                format: "proxmark3_125khz",
+                timestamp: new Date().toISOString(),
+                total_cards: rfidCards.length,
+                cards: rfidCards.map(card => ({
+                    name: card.name,
+                    type: card.tagType,
+                    cardId: card.cardId,
+                    facilityCode: card.facilityCode,
+                    rawData: card.rawData,
+                    proxmark3_commands: {
+                        read: generateProxmark3Command(card).replace('clone', 'read'),
+                        clone: generateProxmark3Command(card),
+                        t5577_write: generateT5577Command(card)
+                    },
+                    flipper_zero: {
+                        format: 'RFID_125',
+                        frequency: 125000,
+                        data: card.rawData || card.cardId
+                    }
+                }))
+            };
+
+            const dataStr = JSON.stringify(exportData, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `125khz-rfid-cards-${new Date().toISOString().split('T')[0]}.json`;
+            link.click();
+            URL.revokeObjectURL(url);
+
+            showSuccess(`${rfidCards.length} RFID cards exported for Proxmark3/Flipper Zero!`);
+            
+            setTimeout(() => {
+                alert(`🔧 125kHz RFID Export Complete!
+
+PROXMARK3 USAGE:
+1. Load the JSON file
+2. Copy the "clone" commands  
+3. Run in Proxmark3 console
+4. Use T5577 cards for cloning
+
+FLIPPER ZERO USAGE:
+1. Copy card data from JSON
+2. Create new RFID file in Flipper
+3. Paste data and save
+4. Use "Emulate" feature
+
+T5577 CLONING:
+1. Buy blank T5577 cards
+2. Use Proxmark3 write commands
+3. Cards become exact clones of originals`);
+            }, 2000);
+        }
+
         function showSuccess(message) {
             showMessage('successMsg', 'successText', message);
         }
@@ -869,6 +1278,165 @@ Download starting...`);
 </body>
 </html>
 """
+
+@app.route('/api/export/125khz-rfid', methods=['POST'])
+def export_125khz_rfid():
+    """Export 125kHz RFID cards for hardware cloning"""
+    tags = request.get_json().get('tags', {})
+    
+    # Filter only 125kHz RFID cards
+    rfid_cards = {k: v for k, v in tags.items() if v.get('frequency') == '125kHz'}
+    
+    if not rfid_cards:
+        return jsonify({
+            "status": "error",
+            "message": "No 125kHz RFID cards found"
+        }), 400
+    
+    export_data = {
+        "format": "proxmark3_125khz",
+        "timestamp": datetime.now().isoformat(),
+        "total_cards": len(rfid_cards),
+        "cards": []
+    }
+    
+    for card_id, card in rfid_cards.items():
+        card_export = {
+            "name": card.get('name', 'Unknown RFID Card'),
+            "type": card.get('tagType', 'Unknown'),
+            "cardId": card.get('cardId'),
+            "facilityCode": card.get('facilityCode'),
+            "rawData": card.get('rawData'),
+            "format": card.get('format'),
+            "emulation_methods": {
+                "proxmark3": {
+                    "read_command": f"lf {get_lf_command(card.get('tagType'))} read",
+                    "clone_command": generate_proxmark3_clone_command(card),
+                    "t5577_write": f"lf t5 write --blk 0 --data {card.get('rawData', card.get('cardId'))}"
+                },
+                "flipper_zero": {
+                    "format": "RFID_125kHz",
+                    "frequency": 125000,
+                    "data": card.get('rawData', card.get('cardId')),
+                    "modulation": get_flipper_modulation(card.get('tagType'))
+                },
+                "chameleon_mini": {
+                    "config": get_chameleon_config(card.get('tagType')),
+                    "uid": card.get('cardId'),
+                    "data": card.get('rawData')
+                }
+            },
+            "cloning_instructions": get_cloning_instructions(card.get('tagType'))
+        }
+        export_data["cards"].append(card_export)
+    
+    return jsonify({
+        "status": "success",
+        "export_format": "125kHz RFID Hardware Tools",
+        "cards_exported": len(rfid_cards),
+        "data": export_data,
+        "hardware_recommendations": [
+            "Proxmark3 Easy - Most versatile, ~$50",
+            "Flipper Zero - User-friendly, ~$170", 
+            "T5577 cards - For cloning, ~$1 each",
+            "Chameleon Mini - Advanced users, ~$60"
+        ],
+        "instructions": [
+            "Choose your hardware tool",
+            "Load the exported commands",
+            "Clone to T5577 or emulate directly",
+            "Test with original access system"
+        ]
+    })
+
+def get_lf_command(tag_type):
+    """Get Proxmark3 LF command prefix for tag type"""
+    commands = {
+        'HID_Prox': 'hid',
+        'EM4100': 'em 410x',
+        'EM4102': 'em 410x',
+        'Indala': 'indala',
+        'AWID': 'awid',
+        'T5577': 't5'
+    }
+    return commands.get(tag_type, 't5')
+
+def generate_proxmark3_clone_command(card):
+    """Generate Proxmark3 clone command based on card type"""
+    tag_type = card.get('tagType')
+    card_id = card.get('cardId')
+    raw_data = card.get('rawData')
+    
+    if tag_type == 'HID_Prox':
+        return f"lf hid clone --raw {raw_data or card_id}"
+    elif tag_type in ['EM4100', 'EM4102']:
+        return f"lf em 410x_clone --id {card_id}"
+    elif tag_type == 'Indala':
+        return f"lf indala clone --raw {raw_data}"
+    elif tag_type == 'AWID':
+        return f"lf awid clone --fmtlen 26 --fc {card.get('facilityCode', '0')} --cn {card_id}"
+    else:
+        return f"lf t5 write --blk 0 --data {raw_data or card_id}"
+
+def get_flipper_modulation(tag_type):
+    """Get Flipper Zero modulation for tag type"""
+    modulations = {
+        'HID_Prox': 'ASK',
+        'EM4100': 'ASK', 
+        'EM4102': 'ASK',
+        'Indala': 'PSK',
+        'AWID': 'FSK',
+        'T5577': 'ASK'
+    }
+    return modulations.get(tag_type, 'ASK')
+
+def get_chameleon_config(tag_type):
+    """Get Chameleon Mini configuration for tag type"""
+    configs = {
+        'HID_Prox': 'HID_1K26',
+        'EM4100': 'EM410X',
+        'EM4102': 'EM410X', 
+        'Indala': 'INDALA',
+        'AWID': 'AWID',
+        'T5577': 'EM410X'
+    }
+    return configs.get(tag_type, 'EM410X')
+
+def get_cloning_instructions(tag_type):
+    """Get specific cloning instructions for tag type"""
+    instructions = {
+        'HID_Prox': [
+            "Use Proxmark3: lf hid clone command",
+            "Write to T5577: lf t5 write with HID format",
+            "Test with HID readers"
+        ],
+        'EM4100': [
+            "Use Proxmark3: lf em 410x_clone",
+            "Very common format, easy to clone",
+            "Works with most 125kHz cloners"
+        ],
+        'EM4102': [
+            "Similar to EM4100",
+            "Use same commands as EM4100", 
+            "High success rate for cloning"
+        ],
+        'Indala': [
+            "More complex format",
+            "Requires Proxmark3 for best results",
+            "May need multiple attempts"
+        ],
+        'AWID': [
+            "Professional access control format",
+            "Requires facility code + card number",
+            "Test thoroughly before deployment"
+        ],
+        'T5577': [
+            "Already programmable",
+            "Can be reprogrammed easily",
+            "Use as target for other clones"
+        ]
+    }
+    return instructions.get(tag_type, ["Generic cloning instructions"])
 
 @app.route('/api/export/nfc-tools-pro', methods=['POST'])
 def export_nfc_tools_pro():
